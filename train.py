@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+import torch
 import numpy as np
 import torch.optim as optim
 import torch.nn as nn
@@ -9,7 +11,7 @@ from memory import Transition
 from torch.utils.data import DataLoader
 from dqn import DQNAgent
 from environment import Environment
-from dataloader import MyDataset, padding
+from data_loader import MyDataset, padding
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", type=str, help='configuration file')
@@ -31,6 +33,19 @@ if config['seed'] is not None:
     torch.backends.cudnn.deterministic = True
     np.random.seed(seed)
     random.seed(seed)
+
+
+def loadConfig(config):
+    training_episode = config['training_episode']
+    batch_size = config['batch_size']
+    learning_rate = config['learning_rate']
+
+    gamma = config['gamma']
+    target_update_interval = config['target_update_interval']
+
+    downsample_rate = config['downsample_rate']
+
+    return training_episode, batch_size, learning_rate, gamma, target_update_interval, downsample_rate
 
 
 def optimize_model(memory, dqn_agent, optimizer, batch_size, gamma):
@@ -63,41 +78,39 @@ def optimize_model(memory, dqn_agent, optimizer, batch_size, gamma):
     optimizer.step()
 
 
-def loadConfig(config):
-    training_episode = config['training_episode']
-    batch_size = config['batch_size']
-    learning_rate = config['learning_rate']
-
-    gamma = config['gamma']
-    target_update_interval = config['target_update_interval']
-
-    root_path = config['root_path']
-    downsample_rate = config['downsample_rate']
-
-    return training_episode, batch_size, learning_rate, gamma, target_update_interval, root_path, downsample_rate
-
-
 if __name__ == '__main__':
-    training_episode, batch_size, learning_rate, gamma, target_update_interval, root_path, downsample_rate = loadConfig(config)
+    training_episode, batch_size, learning_rate, gamma, target_update_interval, downsample_rate = loadConfig(config)
 
-    data_path = osp.join(root_path, 'data' + str(downsample_rate) + '/')
-    train_set = MyDataset(root_path=root_path, path=data_path, name="train")
-    val_set = MyDataset(root_path=root_path, path=data_path, name="val")
-    test_set = MyDataset(root_path=root_path, path=data_path, name="test")
+    data_path = osp.join('./data/data' + str(downsample_rate) + '/')
+    train_set = MyDataset( path=data_path, name="train")
+    val_set = MyDataset(path=data_path, name="val")
+    test_set = MyDataset(path=data_path, name="test")
 
     train_iter = DataLoader(dataset=train_set,
-                            batch_size=args['batch_size'],
+                            batch_size=batch_size,
                             shuffle=True,
                             collate_fn=padding)
     val_iter = DataLoader(dataset=val_set,
-                          batch_size=args['eval_bsize'],
+                          batch_size=batch_size,
                           collate_fn=padding)
     test_iter = DataLoader(dataset=test_set,
-                           batch_size=args['eval_bsize'],
+                           batch_size=batch_size,
                            collate_fn=padding)
 
     print("loading dataset finished!")
-
+    for data in train_iter:
+        traces = data[0]
+        tgt_roads = data[1]
+        candidates = data[2]
+        sample_Idx = data[3]
+        print(traces)
+        print("***********************************")
+        print(tgt_roads)
+        print("***********************************")
+        print(candidates)
+        print("***********************************")
+        print(sample_Idx)
+        exit(0)
     state_dim = 10  # 状态维度
     action_dim = 4  # 动作维度
     agent = DQNAgent(state_dim, action_dim)

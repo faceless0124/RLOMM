@@ -29,3 +29,10 @@ def get_border(path):
             MIN_LAT = min(MIN_LAT, lat)
             MIN_LNG = min(MIN_LNG, lng)
     return MIN_LAT, MIN_LNG, MAX_LAT, MAX_LNG
+
+def create_dir(directory):
+    """
+    Creates a directory if it does not already exist.
+    """
+    if not os.path.exists(directory):
+        os.makedirs(directory)

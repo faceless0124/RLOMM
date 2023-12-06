@@ -1,15 +1,12 @@
 import os.path as osp
 import torch
 import json
-import pickle
 from torch.utils.data import Dataset
-import utils as utils
+
 
 class MyDataset(Dataset):
-    def __init__(self, root_path, path, name):
+    def __init__(self, path, name):
         # parent_path = 'path'
-        if not root_path.endswith('/'):
-            root_path += '/'
         # self.MIN_LAT, self.MIN_LNG, self.MAX_LAT, self.MAX_LNG = utils.get_border(root_path + 'road.txt')
         if not path.endswith('/'):
             path += '/'
@@ -19,11 +16,14 @@ class MyDataset(Dataset):
     def buildingDataset(self, data_path):
         with open(data_path, "r") as fp:
             data = json.load(fp)
-            self.traces_ls = data[0::3]
-            self.roads_ls = data[1::3]
-            self.candidates = data[2::3]
-            self.sampleIdx_ls = data[3::3]
+            self.traces_ls = data[0::4]
+            self.roads_ls = data[1::4]
+            self.candidates = data[2::4]
+            self.sampleIdx_ls = data[3::4]
         self.length = len(self.traces_ls)
+        print(self.data_path)
+        print(self.length)
+        print(len(self.roads_ls))
         assert len(self.traces_ls) == len(self.roads_ls)
 
     def __getitem__(self, index):
@@ -45,4 +45,5 @@ def padding(batch):
         z.append(sample[2] + [[0, 0]] * (max_tlen - len(sample[2])))
         w.append(sample[3] + [-1] * (max_tlen - len(sample[3])))
     f = torch.LongTensor
+    print(type(x), type(y), type(z), type(w), type(trace_lens), type(road_lens))
     return f(x), f(y), torch.FloatTensor(z), f(w), trace_lens, road_lens
