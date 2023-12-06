@@ -112,11 +112,18 @@ class DataProcess():
 
         return closest_point
 
-    def get_road_candidates(self, path: str, target_id: int, a: (float, float)) -> list:
+    def get_road_candidates(self, path: str, target_link_id: int, a: (float, float)) -> list:
         """
-            read road.txt
+            find candidate points of point a.
+
+            Parameters:
+            - path: road info data path.
+            - target_link_id: the ground truth road id of point a, used to obtain neighbors.
+            - a: a point from trace.
+
+            Returns:
+            - candidate_points: candidate points of point a.
         """
-        link_nodes_dict = {}
         cr = re.compile(r"(\d*)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\|(.*)")
         neighbors_link_id = []
         candidate_points = []
@@ -125,7 +132,7 @@ class DataProcess():
                 data = cr.findall(line)
                 if len(data) != 0:
                     link_id, s_node_id, e_node_id, link_dir, speed, vertex_count, points, neighbors = data[0]
-                    if target_id == int(link_id):
+                    if target_link_id == int(link_id):
                         neighbors = list(map(lambda x: x.split(','), neighbors.split(';')))
                         neighbors_link_id.append(int(link_id))
                         for i in neighbors:
@@ -151,7 +158,6 @@ class DataProcess():
         path = '../data/road.txt'
         downsampleData, pureData, downsampleIdx = randomDownSampleBySize(self.finalLs, self.sample_rate)
         traces_ls, roads_ls, candidates_ls = [], [], []
-        a = ()
         for downdata, puredata in tqdm(zip(downsampleData, pureData), total=len(downsampleData), desc="Processing"):
             traces, roads, candidates = [], [], []
             for i in downdata:
@@ -161,11 +167,11 @@ class DataProcess():
                 lat, lng = float(il[1]), float(il[2])
                 a = (lng, lat)
                 traces.append((lat, lng))
+                candidates.append(self.get_road_candidates(path, int(i.split(',')[3]), a))
             for i in tqdm(puredata):
                 if i[0] == '#':
                     continue
                 roads.append(int(i.split(',')[3]))
-                candidates.append(self.get_road_candidates(path, int(i.split(',')[3]), a))
             traces_ls.append(traces)
             roads_ls.append(roads)
             candidates_ls.append(candidates)
