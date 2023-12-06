@@ -47,4 +47,4 @@ def padding(batch):
         z.append(sample[2] + [[0, 0]] * (max_len - len(sample[2])))
         w.append(sample[3] + [-1] * (max_len - len(sample[3])))
     # print(type(x), type(y), type(z), type(w), type(trace_lens), type(road_lens))
-    return torch.FloatTensor(x), torch.LongTensor(y), torch.FloatTensor(z), torch.LongTensor(w), trace_lens, road_lens
+    return torch.FloatTensor(x), torch.LongTensor(y), torch.FloatTensor(z), torch.LongTensor(w), trace_lens
