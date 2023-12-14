@@ -37,14 +37,14 @@ class MyDataset(Dataset):
 def padding(batch):
     trace_lens = [len(sample[0]) for sample in batch]
     # road_lens = [len(sample[1]) for sample in batch]
-    # max_tlen, max_rlen = max(trace_lens), max(road_lens)
-    max_len = max(trace_lens)
+    candidates_lens = [len(candidates) for sample in batch for candidates in sample[2]]
+    max_tlen, max_clen = max(trace_lens), max(candidates_lens)
     x, y, z, w = [], [], [], []
     # 0: [PAD]
     for sample in batch:
-        x.append(sample[0] + [[0, 0]] * (max_len - len(sample[0])))
-        y.append(sample[1] + [-1] * (max_len - len(sample[1])))
-        z.append(sample[2] + [[0, 0]] * (max_len - len(sample[2])))
-        w.append(sample[3] + [-1] * (max_len - len(sample[3])))
-    # print(type(x), type(y), type(z), type(w), type(trace_lens), type(road_lens))
+        x.append(sample[0] + [[0, 0]] * (max_tlen - len(sample[0])))
+        y.append(sample[1] + [-1] * (max_tlen - len(sample[1])))
+        z.append([candidates + [[0, 0]] * (max_clen-len(candidates)) for candidates in sample[2]] + [[[0, 0]] * max_clen] * (max_tlen - len(sample[2])))
+        w.append([candidates_id + [-1] * (max_clen-len(candidates_id)) for candidates_id in sample[3]] + [[-1] * max_clen] * (max_tlen - len(sample[3])))
+    print(torch.FloatTensor(x).shape, torch.LongTensor(y).shape, torch.FloatTensor(z).shape, torch.LongTensor(w).shape)
     return torch.FloatTensor(x), torch.LongTensor(y), torch.FloatTensor(z), torch.LongTensor(w), trace_lens
