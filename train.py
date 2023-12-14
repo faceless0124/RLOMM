@@ -9,9 +9,9 @@ import random
 import os.path as osp
 from memory import Transition
 from torch.utils.data import DataLoader
-from dqn import DQNAgent
-from environment import Environment
+from model.dqn import DQNAgent
 from data_loader import MyDataset, padding
+from road_graph import RoadGraph
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", type=str, help='configuration file')
@@ -51,38 +51,68 @@ def loadConfig(config):
 def optimize_model(memory, dqn_agent, optimizer, batch_size, gamma):
     if len(memory) < batch_size:
         return
+
     transitions = memory.sample(batch_size)
     batch = Transition(*zip(*transitions))
 
-    # 计算非最终状态的掩码并连接batch元素
-    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), dtype=torch.bool)
-    non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
-    state_batch = torch.cat(batch.state)
+    # 解压 state 和 next_state
+    states = [s.state for s in transitions]
+    next_states = [s.next_state for s in transitions]
+
+    # 创建一个掩码，标记非最终状态
+    non_final_mask = torch.tensor([s is not None for s in next_states], dtype=torch.bool)
+
+    # 只处理非最终状态的 next_states
+    non_final_next_states = [s for s in next_states if s is not None]
+
+    # 对 states 和 non_final_next_states 中的状态进行处理
+    traces = torch.cat([s.trace for s in states])
+    matched_road_segments_ids = torch.cat([s.matched_road_segments_id for s in states])
+    candidates = torch.cat([s.candidates for s in states])
+
+    if non_final_next_states:
+        non_final_traces = torch.cat([s.trace for s in non_final_next_states])
+        non_final_matched_road_segments_ids = torch.cat([s.matched_road_segments_id for s in non_final_next_states])
+        non_final_candidates = torch.cat([s.candidates for s in non_final_next_states])
+
+    # 把 action 和 reward 转换成张量
     action_batch = torch.cat(batch.action)
     reward_batch = torch.cat(batch.reward)
 
     # 计算Q(s_t, a) - 模型计算的Q值
-    state_action_values = dqn_agent.policy_net(state_batch).gather(1, action_batch)
+    # 注意：需要修改 policy_net 来接受新的输入格式
+    state_action_values = dqn_agent.policy_net(traces, matched_road_segments_ids, candidates).gather(1, action_batch)
 
     # 计算下一个状态的V(s_{t+1})
     next_state_values = torch.zeros(batch_size)
-    next_state_values[non_final_mask] = dqn_agent.target_net(non_final_next_states).max(1)[0].detach()
+    if non_final_next_states:
+        # 注意：需要修改 target_net 来接受新的输入格式
+        next_state_values[non_final_mask] = \
+        dqn_agent.target_net(non_final_traces, non_final_matched_road_segments_ids, non_final_candidates).max(1)[
+            0].detach()
+
     expected_state_action_values = (next_state_values * gamma) + reward_batch
 
     # 计算Huber损失
-    loss = nn.SmoothL1Loss(state_action_values, expected_state_action_values.unsqueeze(1))
+    loss = nn.SmoothL1Loss()(state_action_values, expected_state_action_values.unsqueeze(1))
 
     # 优化模型
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
 
+    return loss.item()  # 返回损失值
 
 if __name__ == '__main__':
     training_episode, batch_size, learning_rate, gamma, target_update_interval, downsample_rate = loadConfig(config)
 
     data_path = osp.join('./data/data' + str(downsample_rate) + '/')
-    train_set = MyDataset( path=data_path, name="train")
+    road_graph = RoadGraph(root_path='./data',
+                           layer=4,
+                           gamma=10000,
+                           device=device)
+
+    train_set = MyDataset(path=data_path, name="train")
     val_set = MyDataset(path=data_path, name="val")
     test_set = MyDataset(path=data_path, name="test")
 
@@ -98,22 +128,10 @@ if __name__ == '__main__':
                            collate_fn=padding)
 
     print("loading dataset finished!")
-    for data in train_iter:
-        traces = data[0]
-        tgt_roads = data[1]
-        candidates = data[2]
-        sample_Idx = data[3]
-        print(traces)
-        print("***********************************")
-        print(tgt_roads)
-        print("***********************************")
-        print(candidates)
-        print("***********************************")
-        print(sample_Idx)
-        exit(0)
+
     state_dim = 10  # 状态维度
-    action_dim = 4  # 动作维度
-    agent = DQNAgent(state_dim, action_dim)
+    action_dim = 14  # 动作维度
+    agent = DQNAgent(action_dim)
 
     agent.to(device)
     print(agent)
@@ -125,25 +143,67 @@ if __name__ == '__main__':
 
     optimizer = optim.Adam(agent.parameters(), lr=learning_rate)
 
-    # TODO：修改训练过程
-    steps_done = 0
-    env = Environment()
-    # 与环境交互，收集经验
-    for episode in range(training_episode):
-        state = env.reset()  # 重置环境，获取初始状态
-        done = False  # 确保 done 被重置
+    # Training loop
+    for data in train_iter:
+        traces = data[0].to(device)
+        tgt_roads = data[1].to(device)
+        candidates = data[2].to(device)
+        candidates_id = data[3].to(device)
 
-        while not done:  # 假设每个episode有10个时间步
-            action = agent.select_action(state, steps_done)
-            steps_done += 1
-            print("Selected Action:", action.item())
-            next_state, reward, done, _ = env.step(action.item())
-            # 存储经验
-            agent.memory.append(Transition(state, action, next_state, reward))
-            # 更新状态
-            state = next_state
-            # 优化模型
-            optimize_model(agent.memory, agent, optimizer, batch_size=batch_size, gamma=gamma)
-            # 定期更新目标网络
-            if steps_done % target_update_interval == 0:
-                agent.update_target_net()
+        matched_road_segments_id = torch.tensor([-1]).to(device)
+        # matched_road_segments_id = torch.tensor([2,5,7,98])
+        for i in range(traces.size(0)):
+            steps_done = 0
+            trace = traces[i][0].unsqueeze(0)
+            candidate = candidates[i][0]
+            for j in range(traces.size(1)):
+                steps_done += 1
+
+                action = agent.select_action(trace, matched_road_segments_id, road_graph, candidate, steps_done)
+                print("select action {}".format(action))
+                # Take the action and get the next state and reward
+                reward = agent.step(action, candidates_id[i][j], tgt_roads[i][j])
+                print("reward:", reward)
+                if j == traces.size(1) - 1:
+                    next_trace = None
+                    next_matched_road_segments_id = None
+                    next_candidate = None
+                else:
+                    next_trace = torch.cat((trace, traces[i][j + 1].unsqueeze(0)), dim=0)
+                    next_matched_road_segments_id = torch.cat(
+                        (matched_road_segments_id, candidates_id[i][j][action].view(1)), dim=0)
+                    next_candidate = candidates[i][j + 1]
+                # Store the transition in the replay memory
+                agent.memory.push(trace, matched_road_segments_id, candidates_id[i][j], action, next_trace,
+                                  next_matched_road_segments_id, next_candidate, reward)
+
+                trace = next_trace
+                matched_road_segments_id = next_matched_road_segments_id
+                candidate = next_candidate
+
+        # Optimize the model using samples from the replay memory in batches
+        loss = optimize_model(agent.memory, agent, optimizer, batch_size, gamma)
+        print("loss:", loss)
+
+    ### 使用environment的版本
+    # steps_done = 0
+    # env = Environment(train_iter)
+    # # 与环境交互，收集经验
+    # for episode in range(training_episode):
+    #     state = env.reset()  # 重置环境，获取初始状态
+    #     done = False  # 确保 done 被重置
+    #
+    #     while not done:  # 假设每个episode有10个时间步
+    #         action = agent.select_action(state, steps_done)
+    #         steps_done += 1
+    #         print("Selected Action:", action.item())
+    #         next_state, reward, done, _ = env.step(action.item())
+    #         # 存储经验
+    #         agent.memory.append(Transition(state, action, next_state, reward))
+    #         # 更新状态
+    #         state = next_state
+    #         # 优化模型
+    #         optimize_model(agent.memory, agent, optimizer, batch_size=batch_size, gamma=gamma)
+    #         # 定期更新目标网络
+    #         if steps_done % target_update_interval == 0:
+    #             agent.update_target_net()
