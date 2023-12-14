@@ -5,3 +5,4 @@ data/*
 .idea/*
 *.xml
 .idea/misc.xml
+*.pyc
