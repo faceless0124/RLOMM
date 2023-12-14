@@ -43,7 +43,7 @@ class DataProcess():
         self.min_road_len = min_road_len
         beginLs = self.readTrajFile(traj_input_path)
         self.finalLs = self.cutData(beginLs)
-        self.traces_ls, self.roads_ls, self.candidates, self.downsampleIdx, downSampleData = self.sampling()
+        self.traces_ls, self.roads_ls, self.candidates, self.candidates_id, self.downsampleIdx, downSampleData = self.sampling()
         self.splitData(output_dir)
         with open(self.output_dir + 'data_split/downsample_trace.txt', 'w') as f:
             for traces in downSampleData:
@@ -112,7 +112,7 @@ class DataProcess():
 
         return closest_point
 
-    def get_road_candidates(self, path: str, target_link_id: int, a: (float, float)) -> list:
+    def get_road_candidates(self, path: str, target_link_id: int, a: (float, float)) -> (list, list):
         """
             find candidate points of point a.
 
@@ -149,7 +149,7 @@ class DataProcess():
                             points = list(map(lambda x: x.split(' '), points.split(',')))
                             points = list(map(lambda x: (float(x[0]), float(x[1])), points))
                             candidate_points.append(self.closest_point_on_line(points[0], points[1], a))
-        return candidate_points
+        return candidate_points, neighbors_link_id
 
     def sampling(self):
         """
@@ -157,9 +157,9 @@ class DataProcess():
         """
         path = '../data/road.txt'
         downsampleData, pureData, downsampleIdx = randomDownSampleBySize(self.finalLs, self.sample_rate)
-        traces_ls, roads_ls, candidates_ls = [], [], []
-        for downdata, puredata in tqdm(zip(downsampleData, pureData), total=len(downsampleData), desc="Processing"):
-            traces, roads, candidates = [], [], []
+        traces_ls, roads_ls, candidates_ls, candidates_id_ls = [], [], [], []
+        for downdata in tqdm(downsampleData):
+            traces, roads, candidates, candidates_ids = [], [], [], []
             for i in downdata:
                 if i[0] == '#':
                     continue
@@ -167,15 +167,19 @@ class DataProcess():
                 lat, lng = float(il[1]), float(il[2])
                 a = (lng, lat)
                 traces.append((lat, lng))
-                candidates.append(self.get_road_candidates(path, int(i.split(',')[3]), a))
-            for i in tqdm(puredata):
-                if i[0] == '#':
-                    continue
+                candidates_cordinates, candidates_id = self.get_road_candidates(path, int(i.split(',')[3]), a)
+                candidates.append(candidates_cordinates)
+                candidates_ids.append(candidates_id)
                 roads.append(int(i.split(',')[3]))
+
+            # for i in tqdm(puredata):
+            #     if i[0] == '#':
+            #         continue
             traces_ls.append(traces)
             roads_ls.append(roads)
             candidates_ls.append(candidates)
-        return traces_ls, roads_ls, candidates_ls, downsampleIdx, downsampleData
+            candidates_id_ls.append(candidates_ids)
+        return traces_ls, roads_ls, candidates_ls, candidates_id_ls, downsampleIdx, downsampleData
 
     def cutData(self, beginLs):
         """
@@ -241,13 +245,13 @@ class DataProcess():
         test_trace = []
         for i in range(num_sample):
             if i in train_idxs:
-                trainset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.downsampleIdx[i]])
+                trainset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
                 train_trace += [self.finalLs[i]]
             elif i in val_idxs:
-                valset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.downsampleIdx[i]])
+                valset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
                 val_trace += [self.finalLs[i]]
             else:
-                testset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.downsampleIdx[i]])
+                testset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
                 test_trace += [self.finalLs[i]]
 
         with open(os.path.join(train_data_dir, "train.json"), 'w') as fp:
@@ -276,7 +280,7 @@ if __name__ == "__main__":
     downsample_rate = sys.argv[1]
     path = '../data/'
     data_path = path + 'data' + downsample_rate + '/'
-    DataProcess(traj_input_path=path+'trace.txt', \
+    DataProcess(traj_input_path=path+'trace100.txt', \
         output_dir=data_path, sample_rate=float(downsample_rate))
     pass
 
