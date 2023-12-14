@@ -2,3 +2,6 @@
 *.zip
 .DS_Store
 data/*
+.idea/*
+*.xml
+.idea/misc.xml
