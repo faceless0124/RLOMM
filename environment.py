@@ -1,8 +1,9 @@
 
 class Environment:
-    def __init__(self):
-        self.state_space_size = 2  # 状态空间维度
-        self.action_space_size = 2  # 动作空间维度
+    def __init__(self, train_iter):
+        # self.state_space_size = 2  # 状态空间维度
+        # self.action_space_size = 2  # 动作空间维度
+        self.train_iter = train_iter
         self.current_state = None
 
     def reset(self):
