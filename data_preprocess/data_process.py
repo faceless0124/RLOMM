@@ -219,7 +219,7 @@ class DataProcess():
             assert(len(i) >= 16 and len(i) <= 40)
         return finalLs
 
-    def splitData(self, output_dir, train_rate=0.7, val_rate=0.1):
+    def splitData(self, output_dir, train_rate=0.7, test_rate=0.3):
         """
             split original data to train, valid and test datasets
         """
@@ -227,29 +227,22 @@ class DataProcess():
         create_dir(output_dir + 'data_split/')
         train_data_dir = output_dir + 'train_data/'
         create_dir(train_data_dir)
-        val_data_dir = output_dir + 'val_data/'
-        create_dir(val_data_dir)
         test_data_dir = output_dir + 'test_data/'
         create_dir(test_data_dir)
         num_sample = len(self.traces_ls)
-        train_size, val_size = int(num_sample * train_rate), int(num_sample *
-                                                                 val_rate)
+        train_size, test_size = int(num_sample * train_rate), int(num_sample *
+                                                                 test_rate)
         idxs = list(range(num_sample))
         random.shuffle(idxs)
         train_idxs = idxs[:train_size]
-        val_idxs = idxs[train_size:train_size + val_size]
-        trainset, valset, testset = [], [], []
+        trainset, testset = [], []
 
         train_trace = []
-        val_trace = []
         test_trace = []
         for i in range(num_sample):
             if i in train_idxs:
                 trainset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
                 train_trace += [self.finalLs[i]]
-            elif i in val_idxs:
-                valset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
-                val_trace += [self.finalLs[i]]
             else:
                 testset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
                 test_trace += [self.finalLs[i]]
@@ -257,15 +250,13 @@ class DataProcess():
         with open(os.path.join(train_data_dir, "train.json"), 'w') as fp:
             json.dump(trainset, fp)
 
-        with open(os.path.join(val_data_dir, "val.json"), 'w') as fp:
-            json.dump(valset, fp)
 
         with open(os.path.join(test_data_dir, "test.json"), 'w') as fp:
             json.dump(testset, fp)
 
-        all_trace = [train_trace, val_trace, test_trace]
-        all_trace_name = ['train_trace.txt', 'val_trace.txt', 'test_trace.txt']
-        for i in range(3):
+        all_trace = [train_trace, test_trace]
+        all_trace_name = ['train_trace.txt', 'test_trace.txt']
+        for i in range(2):
             tmptrace = all_trace[i]
             path = output_dir + 'data_split/' + all_trace_name[i]
             with open(path, 'w') as f:
@@ -279,7 +270,7 @@ class DataProcess():
 if __name__ == "__main__":
     downsample_rate = sys.argv[1]
     path = '../data/'
-    data_path = path + 'data' + downsample_rate + '/'
+    data_path = path + 'data' + downsample_rate + '_100' + '/'
     DataProcess(traj_input_path=path+'trace100.txt', \
         output_dir=data_path, sample_rate=float(downsample_rate))
     pass

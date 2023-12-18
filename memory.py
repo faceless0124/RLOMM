@@ -11,11 +11,10 @@ class Memory(object):
     def __init__(self, capacity):
         self.memory = deque([], maxlen=capacity)
 
-    def push(self, trace, matched_road_segments_id, candidates, action, next_trace, next_matched_road_segments_id, next_candidates, reward):
-        # 使用 State namedtuple 创建 state 和 next_state
-        state = State(trace, matched_road_segments_id, candidates)
-        next_state = State(next_trace, next_matched_road_segments_id, next_candidates)
-        self.memory.append(Transition(state, action, next_state, reward))
+    def push(self, trace, matched_road_segments_id, candidates, next_trace, next_matched_road_segments_id, next_candidates, action, reward):
+        state_namedtuple = State(trace, matched_road_segments_id, candidates)
+        next_state_namedtuple = State(next_trace, next_matched_road_segments_id, next_candidates)
+        self.memory.append(Transition(state_namedtuple, action, next_state_namedtuple, reward))
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)

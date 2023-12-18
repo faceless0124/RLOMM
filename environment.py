@@ -1,27 +1,28 @@
 
 class Environment:
-    def __init__(self, train_iter):
-        # self.state_space_size = 2  # 状态空间维度
-        # self.action_space_size = 2  # 动作空间维度
-        self.train_iter = train_iter
-        self.current_state = None
+    def __init__(self, data_loader):
+        self.data_loader = data_loader
+        self.data_iter = iter(data_loader)
+        self.current_data = None
+        self.num_of_batches = 7000//512
 
     def reset(self):
-        # 重置环境，返回初始状态
-        self.current_state = [0.0, 0.0]
-        return self.current_state
+        # 重置数据加载器的迭代器
+        self.data_iter = iter(self.data_loader)
+        self.current_data = next(self.data_iter, None)
 
-    def step(self, action):
-        # 执行动作，更新状态，返回下一个状态、奖励、是否终止等信息
-        if action == 0:
-            self.current_state[0] += 1.0
+    def step(self):
+        # 获取下一个数据批次
+        if self.current_data is None:
+            done = True
+            next_data = None
         else:
-            self.current_state[1] -= 0.5
+            done = False
+            next_data = self.current_data
+            self.current_data = next(self.data_iter, None)
+        return next_data, done
 
-        # 模拟奖励（简化，实际根据具体问题定义）
-        reward = self.current_state[0] - abs(self.current_state[1])
-
-        # 判断是否终止
-        done = abs(self.current_state[0]) > 5.0
-
-        return self.current_state, reward, done
+    # 如果还需要索引，可以添加如下方法
+    # 但注意，DataLoader不保证数据的顺序，特别是在shuffle=True时
+    def get_current_index(self):
+        raise NotImplementedError("DataLoader does not support index tracking.")
