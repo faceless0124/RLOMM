@@ -43,7 +43,7 @@ class DataProcess():
         self.min_road_len = min_road_len
         beginLs = self.readTrajFile(traj_input_path)
         self.finalLs = self.cutData(beginLs)
-        self.traces_ls, self.roads_ls, self.candidates, self.candidates_id, self.downsampleIdx, downSampleData = self.sampling()
+        self.traces_ls, self.roads_ls, self.candidates, self.candidates_id, self.time_stamp, self.downsampleIdx, downSampleData = self.sampling()
         self.splitData(output_dir)
         with open(self.output_dir + 'data_split/downsample_trace.txt', 'w') as f:
             for traces in downSampleData:
@@ -134,11 +134,14 @@ class DataProcess():
                     link_id, s_node_id, e_node_id, link_dir, speed, vertex_count, points, neighbors = data[0]
                     if target_link_id == int(link_id):
                         neighbors = list(map(lambda x: x.split(','), neighbors.split(';')))
-                        neighbors_link_id.append(int(link_id))
+                        # 添加邻居的 link_id
                         for i in neighbors:
                             if i == None or (len(i) == 1 and i[0] == ''):
                                 continue
                             neighbors_link_id.append(int(i[0]))
+                        # 在添加邻居之后，随机插入 link_id
+                        random_index = random.randint(0, len(neighbors_link_id))  # 生成一个随机索引
+                        neighbors_link_id.insert(random_index, int(link_id))
             for neighbor_id in neighbors_link_id:
                 f.seek(0)
                 for line in f.readlines():
@@ -157,13 +160,14 @@ class DataProcess():
         """
         path = '../data/road.txt'
         downsampleData, pureData, downsampleIdx = randomDownSampleBySize(self.finalLs, self.sample_rate)
-        traces_ls, roads_ls, candidates_ls, candidates_id_ls = [], [], [], []
+        traces_ls, roads_ls, candidates_ls, candidates_id_ls, time_stamp_ls = [], [], [], [], []
         for downdata in tqdm(downsampleData):
-            traces, roads, candidates, candidates_ids = [], [], [], []
+            traces, roads, candidates, candidates_ids, time_stamp = [], [], [], [], []
             for i in downdata:
                 if i[0] == '#':
                     continue
                 il = i.split(',')
+                time_stamp.append(il[0])
                 lat, lng = float(il[1]), float(il[2])
                 a = (lng, lat)
                 traces.append((lat, lng))
@@ -172,14 +176,12 @@ class DataProcess():
                 candidates_ids.append(candidates_id)
                 roads.append(int(i.split(',')[3]))
 
-            # for i in tqdm(puredata):
-            #     if i[0] == '#':
-            #         continue
             traces_ls.append(traces)
             roads_ls.append(roads)
             candidates_ls.append(candidates)
             candidates_id_ls.append(candidates_ids)
-        return traces_ls, roads_ls, candidates_ls, candidates_id_ls, downsampleIdx, downsampleData
+            time_stamp_ls.append(time_stamp)
+        return traces_ls, roads_ls, candidates_ls, candidates_id_ls, time_stamp_ls, downsampleIdx, downsampleData
 
     def cutData(self, beginLs):
         """
@@ -241,10 +243,10 @@ class DataProcess():
         test_trace = []
         for i in range(num_sample):
             if i in train_idxs:
-                trainset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
+                trainset.extend([self.traces_ls[i], self.time_stamp[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
                 train_trace += [self.finalLs[i]]
             else:
-                testset.extend([self.traces_ls[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
+                testset.extend([self.traces_ls[i], self.time_stamp[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
                 test_trace += [self.finalLs[i]]
 
         with open(os.path.join(train_data_dir, "train.json"), 'w') as fp:
@@ -270,8 +272,6 @@ class DataProcess():
 if __name__ == "__main__":
     downsample_rate = sys.argv[1]
     path = '../data/'
-    data_path = path + 'data' + downsample_rate + '_100' + '/'
-    DataProcess(traj_input_path=path+'trace100.txt', \
-        output_dir=data_path, sample_rate=float(downsample_rate))
+    data_path = path + 'data' + downsample_rate + '_+timestamp' + '/'
+    DataProcess(traj_input_path=path+'trace.txt', output_dir=data_path, sample_rate=float(downsample_rate))
     pass
-

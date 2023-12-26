@@ -1,10 +1,10 @@
 
 class Environment:
-    def __init__(self, data_loader):
+    def __init__(self, data_loader, batch_size):
         self.data_loader = data_loader
         self.data_iter = iter(data_loader)
         self.current_data = None
-        self.num_of_batches = 7000//512
+        self.num_of_batches = 7000//batch_size
 
     def reset(self):
         # 重置数据加载器的迭代器

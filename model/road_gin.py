@@ -26,4 +26,8 @@ class RoadGIN(nn.Module):
             layer_outputs.append(x)
         x = torch.stack(layer_outputs, dim=0)
         x = torch.max(x, dim=0)[0]
+
+        # padding
+        zero_tensor = torch.zeros(1, 16).to(x.device)
+        x = torch.cat((x, zero_tensor), dim=0)
         return x

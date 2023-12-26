@@ -1,13 +1,14 @@
 {
     "seed": 12418,
 
-    "training_episode": 5,
+    "training_episode": 200,
     "test_episode": 1,
 
     "batch_size": 512,
-    "learning_rate": 1e-5,
-    "gamma":0.9,
-    "target_update_interval": 4,
+    "learning_rate": 1e-2,
+
+    "gamma":0.8,
+    "target_update_interval": 16,
 
     "downsample_rate": 0.5
 }
