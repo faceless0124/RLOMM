@@ -2,7 +2,6 @@
     "seed": 12418,
 
     "training_episode": 200,
-    "test_episode": 1,
 
     "train_batch_size": 512,
     "test_batch_size": 3000,

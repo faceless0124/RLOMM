@@ -39,7 +39,6 @@ if config['seed'] is not None:
 
 def loadConfig(config):
     training_episode = config['training_episode']
-    test_episode = config['test_episode']
 
     train_batch_size = config['train_batch_size']
     test_batch_size = config['test_batch_size']
@@ -53,7 +52,7 @@ def loadConfig(config):
     downsample_rate = config['downsample_rate']
     optimize_batch_size = config['optimize_batch_size']
 
-    return (training_episode, test_episode, train_batch_size, test_batch_size, train_size, test_size, learning_rate,
+    return (training_episode, train_batch_size, test_batch_size, train_size, test_size, learning_rate,
             gamma, target_update_interval, downsample_rate, optimize_batch_size)
 
 
@@ -200,7 +199,7 @@ def evaluate_agent(env, agent, road_graph, device):
 
 
 if __name__ == '__main__':
-    (training_episode, test_episode, train_batch_size, test_batch_size, train_size, test_size, learning_rate,
+    (training_episode, train_batch_size, test_batch_size, train_size, test_size, learning_rate,
      gamma, target_update_interval, downsample_rate, optimize_batch_size) = loadConfig(config)
 
     data_path = osp.join('./data/data' + str(downsample_rate) + '_+timestamp' + '/')
