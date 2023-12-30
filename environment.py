@@ -1,10 +1,10 @@
 
 class Environment:
-    def __init__(self, data_loader, batch_size):
+    def __init__(self, data_loader, num_of_batches):
         self.data_loader = data_loader
         self.data_iter = iter(data_loader)
         self.current_data = None
-        self.num_of_batches = 7000//batch_size
+        self.num_of_batches = num_of_batches
 
     def reset(self):
         # 重置数据加载器的迭代器
@@ -21,8 +21,3 @@ class Environment:
             next_data = self.current_data
             self.current_data = next(self.data_iter, None)
         return next_data, done
-
-    # 如果还需要索引，可以添加如下方法
-    # 但注意，DataLoader不保证数据的顺序，特别是在shuffle=True时
-    def get_current_index(self):
-        raise NotImplementedError("DataLoader does not support index tracking.")
