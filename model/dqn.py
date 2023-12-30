@@ -55,7 +55,7 @@ class QNetwork(nn.Module):
         segments_encoded = segments_encoded.mean(dim=1)  # 对每个序列取平均
 
         # 如果candidates包含变长序列，您可能需要进行相应的处理
-        traces_encoded = traces_encoded.unsqueeze(1) # (batch_size, 1, traces_d_model
+        traces_encoded = traces_encoded.unsqueeze(1) # (batch_size, 1, traces_d_model)
         segments_encoded = segments_encoded.unsqueeze(1) # (batch_size, 1, road_emb_dim)
         # candidates.shape = (batch_size, num_candidates, candidate_d_model)
         # 应用注意力机制
@@ -106,30 +106,15 @@ class Attention(nn.Module):
         super(Attention, self).__init__()
         self.proj = nn.Linear(combined_dim, d_model)
         self.proj_candidates = nn.Linear(candidate_dim, d_model)
+
     def forward(self, trace_encoded, segments_encoded, candidates):
         # 将轨迹和路段编码合并
-        trace_segments_combined = torch.cat((trace_encoded, segments_encoded), dim=-1) # (batch_size, 1, combined_dim)
-        # print("trace_segments_combined", trace_segments_combined)
-        # Project input x to 64-dimensional space
-        x_proj = torch.tanh(self.proj(trace_segments_combined)) # (batch_size, 1, d_model)
-        # print("x_proj", x_proj)
-        # Project candidates to the same 64-dimensional space
-        candidates_proj = torch.tanh(self.proj_candidates(candidates)) # (batch_size, num_candidates, d_model)
-        # print("candidates", candidates)
-        # print("candidates_proj", candidates_proj.transpose(1, 2))
+        trace_segments_combined = torch.cat((trace_encoded, segments_encoded), dim=-1)  # (batch_size, 1, combined_dim)
+        x_proj = torch.tanh(self.proj(trace_segments_combined))  # (batch_size, 1, d_model)
+        candidates_proj = torch.tanh(self.proj_candidates(candidates))  # (batch_size, num_candidates, d_model)
         # Compute attention scores between each x and the candidates
-        scores = torch.matmul(x_proj, candidates_proj.transpose(1, 2)).squeeze(1) # (batch_size, 1, num_candidates)
-        # print("scores", scores)
+        scores = torch.matmul(x_proj, candidates_proj.transpose(1, 2)).squeeze(1)  # (batch_size, 1, num_candidates)
         return scores
-
-        # Apply softmax to get attention weights
-        # attention_weights = F.softmax(scores, dim=-1) # (batch_size, 1, num_candidates)
-        # # Apply attention weights to the candidates
-        # weighted_candidates = torch.matmul(attention_weights, candidates) # (batch_size, 1, candidate_dim)
-        # # 合并特征
-        # combined_features = torch.cat((trace_segments_combined.squeeze(1), weighted_candidates.squeeze(1)), dim=-1) # (batch_size, combined_dim + candidate_dim)
-        # # 生成 Q 值
-        # q_values = self.output_layer(combined_features)
 
 
 class DQNAgent(nn.Module):
@@ -139,23 +124,12 @@ class DQNAgent(nn.Module):
         self.target_net = QNetwork().eval()
         self.memory = Memory(100)
 
-    def select_action(self, traces, matched_road_segments_id, candidates, road_graph, seq_len, steps_done=None,
-                      evaluate=True, EPS_START=0.9, EPS_END=0.1,
-                      EPS_DECAY=2000):
+    def select_action(self, traces, matched_road_segments_id, candidates, road_graph, seq_len):
         with torch.no_grad():
             # 使用main_net进行前向传播，得到每个样本的动作Q值
             action_values = self.main_net(traces, matched_road_segments_id, candidates, road_graph, seq_len)
             # 对每个样本选择最大Q值的动作
             return torch.argmax(action_values, dim=1)
-
-        # traces, matched_road_segments_id, candidates = state
-        # sample = random.random()
-        # eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
-        # if sample > eps_threshold or evaluate:
-        #     with torch.no_grad():
-        #         return torch.argmax(self.policy_net(traces, matched_road_segments_id, candidates, road_graph))
-        # else:
-        #     return torch.tensor(random.randrange(candidates.size(0)), dtype=torch.long).to(traces.device)
 
     def step(self, action, candidates_id, tgt_roads, trace_lens, point_idx):
         # 计算奖励的张量
