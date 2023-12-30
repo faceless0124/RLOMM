@@ -9,8 +9,6 @@ import random
 import os.path as osp
 
 from tqdm import tqdm
-
-from memory import Transition
 from torch.utils.data import DataLoader
 from model.dqn import DQNAgent
 from data_loader import MyDataset, padding
@@ -43,56 +41,27 @@ def loadConfig(config):
     training_episode = config['training_episode']
     test_episode = config['test_episode']
 
-    batch_size = config['batch_size']
+    train_batch_size = config['train_batch_size']
+    test_batch_size = config['test_batch_size']
+    train_size = config['train_size']
+    test_size = config['test_size']
     learning_rate = config['learning_rate']
 
     gamma = config['gamma']
     target_update_interval = config['target_update_interval']
 
     downsample_rate = config['downsample_rate']
+    optimize_batch_size = config['optimize_batch_size']
 
-    return training_episode, test_episode, batch_size, learning_rate, gamma, target_update_interval, downsample_rate
+    return (training_episode, test_episode, train_batch_size, test_batch_size, train_size, test_size, learning_rate,
+            gamma, target_update_interval, downsample_rate, optimize_batch_size)
 
 
-# def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma):
-#     if len(memory) < 1:
-#         return
-#
-#     transitions = memory.sample(1)
-#     batch = Transition(*zip(*transitions))
-#
-#     # 解压 state, next_state, action_batch, reward_batch
-#     states = batch.state[0]
-#     next_states = batch.next_state[0]
-#     action_batch = batch.action[0]
-#     reward_batch = batch.reward[0].unsqueeze(1).to(device)
-#
-#     mask = (reward_batch != 0).float()
-#
-#     # TODO 修改为Double DQN
-#     trace, matched_road_segments_id, candidate = states
-#     q_values = dqn_agent.main_net(trace, matched_road_segments_id, candidate, road_graph, trace.size(1))
-#     state_action_values = q_values.gather(1, action_batch.unsqueeze(1)) # 选择对应动作的 Q 值
-#
-#     next_trace, next_matched_road_segments_id, next_candidate = next_states
-#     q_values_next = dqn_agent.target_net(next_trace, next_matched_road_segments_id, next_candidate, road_graph, trace.size(1))
-#     next_state_values = q_values_next.max(1)[0].detach().unsqueeze(1) # 选择最大 Q 值
-#
-#     expected_state_action_values = (next_state_values * gamma) + reward_batch
-#
-#     # 计算Huber损失
-#     loss = nn.SmoothL1Loss()(state_action_values * mask, expected_state_action_values * mask)
-#     # 优化模型
-#     optimizer.zero_grad()
-#     loss.backward()
-#     optimizer.step()
-#     return loss.item()  # 返回损失值
-
-def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma):
-    if len(memory) < 32:
+def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma, optimize_batch):
+    if len(memory) < optimize_batch:
         return
 
-    transitions = memory.sample(32)
+    transitions = memory.sample(optimize_batch)
     total_loss = 0.0
 
     for transition in transitions:
@@ -107,10 +76,17 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma):
         q_values = dqn_agent.main_net(trace, matched_road_segments_id, candidate, road_graph, trace.size(1))
         state_action_values = q_values.gather(1, action)
 
-        # 计算下一个状态的最大预期 Q 值
+        # Double DQN：分离动作选择和评估
+        # 使用主网络选择下一个状态的最佳动作
         next_trace, next_matched_road_segments_id, next_candidate = next_state
-        q_values_next = dqn_agent.target_net(next_trace, next_matched_road_segments_id, next_candidate, road_graph, trace.size(1))
-        next_state_values = q_values_next.max(1)[0].detach().unsqueeze(1)
+        q_values_next_main = dqn_agent.main_net(next_trace, next_matched_road_segments_id, next_candidate, road_graph,
+                                                next_trace.size(1))
+        max_next_action = q_values_next_main.max(1)[1].unsqueeze(1)
+
+        # 使用目标网络评估选择的动作的 Q 值
+        q_values_next_target = dqn_agent.target_net(next_trace, next_matched_road_segments_id, next_candidate,
+                                                    road_graph,trace.size(1))
+        next_state_values = q_values_next_target.gather(1, max_next_action).detach()
 
         # 计算期望 Q 值
         expected_state_action_values = (next_state_values * gamma) + reward
@@ -128,9 +104,8 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma):
     return avg_loss
 
 
-
-
-def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, gamma, target_update_interval, device):
+def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, gamma, target_update_interval,
+                optimize_batch, device):
     steps_done = 0
     for episode in range(training_episode):
         env.reset()
@@ -144,17 +119,16 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
                 break
 
             traces, roads, candidates, candidates_id, trace_lens = data
-
             traces, roads, candidates, candidates_id = \
                 traces.to(device), roads.to(device), candidates.to(device), candidates_id.to(device)
             matched_road_segments_id = torch.full((traces.size(0), 1, 1), -1).to(device)
 
-            for point_idx in range(traces.size(1)-1):
+            for point_idx in range(traces.size(1) - 1):
                 sub_traces = traces[:, :point_idx + 1, :]
-                # sub_candidates = candidates[:, point_idx, :, :]
                 sub_candidates = candidates_id[:, point_idx, :]
 
-                action = agent.select_action(sub_traces, matched_road_segments_id, sub_candidates, road_graph, point_idx)
+                action = agent.select_action(sub_traces, matched_road_segments_id, sub_candidates, road_graph,
+                                             point_idx)
                 reward = agent.step(action, candidates_id[:, point_idx, :], roads[:, point_idx], trace_lens, point_idx)
 
                 episode_reward += reward.sum()
@@ -163,10 +137,11 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
                 next_matched_road_segments_id = torch.cat((matched_road_segments_id, cur_matched_road_segments_id),
                                                           dim=1)
 
-
-                agent.memory.push(traces[:, :point_idx + 1, :], matched_road_segments_id, candidates_id[:, point_idx, :],
-                                      traces[:, :point_idx + 2, :], next_matched_road_segments_id, candidates_id[:, point_idx + 1, :],
-                                      action, reward)
+                agent.memory.push(traces[:, :point_idx + 1, :], matched_road_segments_id,
+                                  candidates_id[:, point_idx, :],
+                                  traces[:, :point_idx + 2, :], next_matched_road_segments_id,
+                                  candidates_id[:, point_idx + 1, :],
+                                  action, reward)
 
                 matched_road_segments_id = next_matched_road_segments_id
 
@@ -175,7 +150,7 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
                     agent.update_target_net()
 
             # 更新损失和奖励
-            loss = optimize_model(agent.memory, agent, optimizer, road_graph, gamma)
+            loss = optimize_model(agent.memory, agent, optimizer, road_graph, gamma, optimize_batch)
             if loss is not None:
                 total_loss += loss
                 update_steps += 1
@@ -184,7 +159,6 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
         avg_loss = total_loss / update_steps if update_steps > 0 else 0
         print(f"Episode {episode}: Total Reward: {episode_reward}, Average Loss: {avg_loss}")
         evaluate_agent(eval_env, agent, road_graph, device)
-
 
 
 def evaluate_agent(env, agent, road_graph, device):
@@ -200,7 +174,6 @@ def evaluate_agent(env, agent, road_graph, device):
 
     for point_idx in tqdm(range(traces.size(1))):
         sub_traces = traces[:, :point_idx + 1, :]
-        # sub_candidates = candidates[:, point_idx, :, :]
         sub_candidates = candidates_id[:, point_idx, :]
 
         action = agent.select_action(sub_traces, matched_road_segments_id, sub_candidates, road_graph, point_idx)
@@ -226,9 +199,9 @@ def evaluate_agent(env, agent, road_graph, device):
     return average_accuracy.item()
 
 
-
 if __name__ == '__main__':
-    training_episode, test_episode, batch_size, learning_rate, gamma, target_update_interval, downsample_rate = loadConfig(config)
+    (training_episode, test_episode, train_batch_size, test_batch_size, train_size, test_size, learning_rate,
+     gamma, target_update_interval, downsample_rate, optimize_batch_size) = loadConfig(config)
 
     data_path = osp.join('./data/data' + str(downsample_rate) + '_+timestamp' + '/')
     road_graph = RoadGraph(root_path='./data',
@@ -240,15 +213,15 @@ if __name__ == '__main__':
     test_set = MyDataset(path=data_path, name="test")
 
     train_loader = DataLoader(dataset=train_set,
-                              batch_size=batch_size,
+                              batch_size=train_batch_size,
                               shuffle=True,
                               collate_fn=padding)
     test_loader = DataLoader(dataset=test_set,
-                             batch_size=3000,
+                             batch_size=test_batch_size,
                              collate_fn=padding)
 
-    train_env = Environment(train_loader, batch_size)
-    eval_env = Environment(test_loader, batch_size)
+    train_env = Environment(train_loader, train_size // train_batch_size)
+    eval_env = Environment(test_loader, test_size // test_batch_size)
 
     print("loading dataset finished!")
 
@@ -261,4 +234,5 @@ if __name__ == '__main__':
         num_of_parameters += np.prod(parameters.shape)
     print("Number of Parameters: {}".format(num_of_parameters), flush=True)
     print("Starting training...")
-    train_agent(train_env, eval_env, agent, optimizer, road_graph, training_episode, gamma, target_update_interval, device)
+    train_agent(train_env, eval_env, agent, optimizer, road_graph, training_episode, gamma, target_update_interval,
+                optimize_batch_size, device)
