@@ -4,12 +4,16 @@
     "training_episode": 200,
     "test_episode": 1,
 
-    "batch_size": 512,
+    "train_batch_size": 512,
+    "test_batch_size": 3000,
+    "train_size": 7000,
+    "test_size": 3000,
     "learning_rate": 1e-2,
 
     "gamma":0.8,
     "target_update_interval": 16,
 
-    "downsample_rate": 0.5
+    "downsample_rate": 0.5,
+    "optimize_batch_size": 32
 }
 
