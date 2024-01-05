@@ -252,7 +252,6 @@ class DataProcess():
         with open(os.path.join(train_data_dir, "train.json"), 'w') as fp:
             json.dump(trainset, fp)
 
-
         with open(os.path.join(test_data_dir, "test.json"), 'w') as fp:
             json.dump(testset, fp)
 

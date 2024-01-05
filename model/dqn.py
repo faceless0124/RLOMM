@@ -118,8 +118,10 @@ class Attention(nn.Module):
 
 
 class DQNAgent(nn.Module):
-    def __init__(self):
+    def __init__(self, correct_reward, wrong_reward):
         super(DQNAgent, self).__init__()
+        self.correct_reward = correct_reward
+        self.wrong_reward = wrong_reward
         self.main_net = QNetwork()
         self.target_net = QNetwork().eval()
         self.memory = Memory(100)
@@ -142,7 +144,7 @@ class DQNAgent(nn.Module):
                 # 从candidates_id中选择由action指定的候选路段ID
                 selected_candidate_id = candidates_id[i, action[i]]
                 # 如果选中的路段ID与目标路段ID匹配，则奖励为1，否则为-1
-                reward = 10 if selected_candidate_id == tgt_roads[i] else -1
+                reward = self.correct_reward if selected_candidate_id == tgt_roads[i] else self.wrong_reward
 
             rewards.append(reward)
         # 将奖励列表转换为张量

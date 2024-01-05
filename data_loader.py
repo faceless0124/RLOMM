@@ -25,7 +25,8 @@ class MyDataset(Dataset):
         self.length = len(self.traces_ls)
 
         # 归一化轨迹和候选点数据
-        self.traces_ls = [self.normalize_traces(trace) for trace in self.traces_ls]
+        # self.traces_ls = [self.normalize_traces(trace) for trace in self.traces_ls]
+        self.traces_ls = [self.trace_gps2grid(trace) for trace in self.traces_ls]
         self.candidates = [self.normalize_candidates(candidate) for candidate in self.candidates]
         self.time_stamps = [self.normalize_time_stamps(ts) for ts in self.time_stamps]
 
@@ -51,6 +52,11 @@ class MyDataset(Dataset):
         # 归一化经纬度数据
         return [[(lat - self.MIN_LAT) / (self.MAX_LAT - self.MIN_LAT),
                  (lng - self.MIN_LNG) / (self.MAX_LNG - self.MIN_LNG)]
+                for lat, lng in trace]
+
+    def trace_gps2grid(self, trace):
+        # 经纬度转网格
+        return [list(utils.gps2grid(lat, lng, MIN_LAT=self.MIN_LAT, MIN_LNG=self.MIN_LNG))
                 for lat, lng in trace]
 
     def normalize_candidates(self, candidates):

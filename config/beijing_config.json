@@ -1,18 +1,20 @@
 {
     "seed": 12418,
-
     "training_episode": 200,
+    "learning_rate": 1e-2,
 
     "train_batch_size": 512,
     "test_batch_size": 3000,
     "train_size": 7000,
     "test_size": 3000,
-    "learning_rate": 1e-2,
+    "optimize_batch_size": 32,
 
     "gamma":0.8,
-    "target_update_interval": 16,
+    "target_update_interval": 32,
+    "downsample_rate": 1,
+    "match_interval": 4,
 
-    "downsample_rate": 0.5,
-    "optimize_batch_size": 32
+    "correct_reward": 1,
+    "wrong_reward": -1
 }
 

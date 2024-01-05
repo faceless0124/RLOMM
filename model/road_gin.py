@@ -28,6 +28,6 @@ class RoadGIN(nn.Module):
         x = torch.max(x, dim=0)[0]
 
         # padding
-        zero_tensor = torch.zeros(1, 16).to(x.device)
+        zero_tensor = torch.zeros(1, x.size(1)).to(x.device)
         x = torch.cat((x, zero_tensor), dim=0)
         return x

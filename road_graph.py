@@ -22,7 +22,7 @@ class RoadGraph():
                                      col=road_edge_index[1],
                                      sparse_sizes=(self.num_roads,
                                                    self.num_roads)).to(device)
-        self.road_x = torch.load(road_pt_path + 'x.pt').to(device)
+        self.road_x = torch.load(road_pt_path + 'x.pt').float().to(device)
         # gain A^k
         A = torch.load(road_pt_path + 'A.pt')
         # A_list [n, n]
