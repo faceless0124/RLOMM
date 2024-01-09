@@ -10,8 +10,8 @@
     "optimize_batch_size": 32,
 
     "gamma":0.8,
-    "target_update_interval": 32,
-    "downsample_rate": 1,
+    "target_update_interval": 4,
+    "downsample_rate": 0.5,
     "match_interval": 4,
 
     "correct_reward": 1,
