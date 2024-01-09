@@ -1,6 +1,8 @@
 import argparse
 import json
 import os
+import time
+
 import torch
 import numpy as np
 import torch.optim as optim
@@ -60,7 +62,159 @@ def loadConfig(config):
 
 
 
-def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma, optimize_batch):
+# def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma, optimize_batch):
+#     if len(memory) < optimize_batch:
+#         return
+#
+#     transitions = memory.sample(optimize_batch)
+#     total_loss = 0.0
+#
+#     for transition in transitions:
+#         # 解压单条记录中的 state, next_state, action, reward
+#         state, action, next_state, reward = transition
+#         reward = reward.unsqueeze(1).to(device)
+#         action = action.unsqueeze(1)
+#         mask = (reward != 0).float()
+#
+#         # 计算当前状态的 Q 值
+#         trace, matched_road_segments_id, candidate = state
+#         q_values = dqn_agent.main_net(trace, matched_road_segments_id, candidate, road_graph, trace.size(1))
+#         state_action_values = q_values.gather(1, action)
+#
+#         # Double DQN：分离动作选择和评估
+#         # 使用主网络选择下一个状态的最佳动作
+#         next_trace, next_matched_road_segments_id, next_candidate = next_state
+#         q_values_next_main = dqn_agent.main_net(next_trace, next_matched_road_segments_id, next_candidate, road_graph,
+#                                                 next_trace.size(1))
+#         max_next_action = q_values_next_main.max(1)[1].unsqueeze(1)
+#
+#         # 使用目标网络评估选择的动作的 Q 值
+#         q_values_next_target = dqn_agent.target_net(next_trace, next_matched_road_segments_id, next_candidate,
+#                                                     road_graph,trace.size(1))
+#         next_state_values = q_values_next_target.gather(1, max_next_action).detach()
+#
+#         # 计算期望 Q 值
+#         expected_state_action_values = (next_state_values * gamma) + reward
+#
+#         # 计算Huber损失并累加
+#         loss = nn.SmoothL1Loss()(state_action_values * mask, expected_state_action_values * mask)
+#         total_loss += loss.item()
+#
+#         # 优化模型
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+#
+#     avg_loss = total_loss / len(transitions)
+#     return avg_loss
+#
+#
+# def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, gamma, target_update_interval,
+#                 optimize_batch, match_interval, correct_reward, wrong_reward, device):
+#     steps_done = 0
+#     for episode in range(training_episode):
+#         env.reset()
+#         episode_reward = 0
+#         total_loss = 0.0
+#         update_steps = 0
+#
+#         for batch in tqdm(range(env.num_of_batches)):
+#             data, done = env.step()
+#             if done:
+#                 break
+#
+#             traces, roads, candidates, candidates_id, trace_lens = data
+#             traces, roads, candidates, candidates_id = \
+#                 traces.to(device), roads.to(device), candidates.to(device), candidates_id.to(device)
+#             matched_road_segments_id = torch.full((traces.size(0), 1, 1), -1).to(device)
+#             # matched_road_segments_id = roads[:,0:match_interval-1].unsqueeze(-1)
+#
+#             for point_idx in range(traces.size(1) - 1):
+#             # for point_idx in range(match_interval - 1 , traces.size(1) - match_interval, match_interval):
+#                 sub_traces = traces[:, :point_idx + 1, :]
+#                 sub_candidates = candidates_id[:, point_idx, :]
+#
+#                 action = agent.select_action(sub_traces, matched_road_segments_id, sub_candidates, road_graph, point_idx)
+#                 reward = agent.step(action, candidates_id[:, point_idx, :], roads[:, point_idx], trace_lens, point_idx)
+#
+#                 episode_reward += reward.sum()
+#
+#                 cur_matched_road_segments_id = candidates_id[:, point_idx, :].gather(1, action.unsqueeze(1)).unsqueeze(-1)
+#                 next_matched_road_segments_id = torch.cat((matched_road_segments_id, cur_matched_road_segments_id), dim=1)
+#                 # 根据sub_traces长度用真实值补齐matched_road_segments_id
+#                 # next_matched_road_segments_id = torch.cat((next_matched_road_segments_id, roads[:, point_idx+1:point_idx+match_interval].unsqueeze(-1)), dim=1)
+#
+#                 agent.memory.push(traces[:, :point_idx + 1, :], matched_road_segments_id,
+#                                   candidates_id[:, point_idx, :],
+#                                   traces[:, :point_idx + 2, :], next_matched_road_segments_id,
+#                                   candidates_id[:, point_idx + 1, :],
+#                                   action, reward)
+#                 # agent.memory.push(traces[:, :point_idx + 1, :], matched_road_segments_id,
+#                 #                   candidates_id[:, point_idx, :],
+#                 #                   traces[:, :point_idx + 1 + match_interval, :], next_matched_road_segments_id,
+#                 #                   candidates_id[:, point_idx + match_interval, :],
+#                 #                   action, reward)
+#
+#                 matched_road_segments_id = next_matched_road_segments_id
+#
+#                 steps_done += 1
+#                 if steps_done % target_update_interval == 0:
+#                     agent.update_target_net()
+#
+#             # 更新损失和奖励
+#             loss = optimize_model(agent.memory, agent, optimizer, road_graph, gamma, optimize_batch)
+#             if loss is not None:
+#                 total_loss += loss
+#                 update_steps += 1
+#
+#         # 计算并打印每个episode的平均loss
+#         avg_loss = total_loss / update_steps if update_steps > 0 else 0
+#         print(f"Episode {episode}: Total Reward: {episode_reward}, Average Loss: {avg_loss}")
+#         evaluate_agent(eval_env, agent, road_graph, match_interval, correct_reward, wrong_reward, device)
+#
+#
+# def evaluate_agent(env, agent, road_graph, match_interval, correct_reward, wrong_reward, device):
+#     env.reset()
+#     data, done = env.step()
+#     traces, roads, candidates, candidates_id, trace_lens = data
+#     traces, roads, candidates, candidates_id = \
+#         traces.to(device), roads.to(device), candidates.to(device), candidates_id.to(device)
+#     matched_road_segments_id = torch.full((traces.size(0), 1, 1), -1).to(device)
+#     # matched_road_segments_id = roads[:, 0:match_interval - 1].unsqueeze(-1)
+#
+#     correct_counts = torch.zeros(traces.size(0))
+#     valid_counts = torch.zeros(traces.size(0))
+#
+#     for point_idx in tqdm(range(traces.size(1) - 1)):
+#     # for point_idx in tqdm(range(match_interval - 1 , traces.size(1) - match_interval, match_interval)):
+#         sub_traces = traces[:, :point_idx + 1, :]
+#         sub_candidates = candidates_id[:, point_idx, :]
+#
+#         action = agent.select_action(sub_traces, matched_road_segments_id, sub_candidates, road_graph, point_idx)
+#         reward = agent.step(action, candidates_id[:, point_idx, :], roads[:, point_idx], trace_lens, point_idx)
+#
+#         # 更新匹配计数
+#         correct_counts += (reward == correct_reward).float()
+#         valid_counts += (reward != 0).float()
+#
+#         cur_matched_road_segments_id = candidates_id[:, point_idx, :].gather(1, action.unsqueeze(1)).unsqueeze(-1)
+#         next_matched_road_segments_id = torch.cat((matched_road_segments_id, cur_matched_road_segments_id), dim=1)
+#         # 根据sub_traces长度用真实值补齐matched_road_segments_id
+#         # next_matched_road_segments_id = torch.cat(
+#         #     (next_matched_road_segments_id, roads[:, point_idx + 1:point_idx + match_interval].unsqueeze(-1)), dim=1)
+#
+#         matched_road_segments_id = next_matched_road_segments_id
+#
+#     # 计算每条轨迹的准确率并存储
+#     accuracy_per_trace = correct_counts / valid_counts
+#     cnt = (correct_counts != 0)
+#
+#     print("matched traces:{}".format(cnt.sum()))
+#     average_accuracy = accuracy_per_trace.mean()
+#     print(f"Average Accuracy: {average_accuracy.item()}")
+
+
+def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma, optimize_batch, match_interval):
     if len(memory) < optimize_batch:
         return
 
@@ -70,27 +224,32 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma, optimize_bat
     for transition in transitions:
         # 解压单条记录中的 state, next_state, action, reward
         state, action, next_state, reward = transition
-        reward = reward.unsqueeze(1).to(device)
-        action = action.unsqueeze(1)
+        reward = reward.to(device)
         mask = (reward != 0).float()
 
         # 计算当前状态的 Q 值
-        trace, matched_road_segments_id, candidate = state
-        q_values = dqn_agent.main_net(trace, matched_road_segments_id, candidate, road_graph, trace.size(1))
-        state_action_values = q_values.gather(1, action)
+        traces_encoding, matched_road_segments_encoding, trace, matched_road_segments_id, candidate = state
+        _, _, q_values = dqn_agent.main_net(traces_encoding, matched_road_segments_encoding,
+                                      trace, matched_road_segments_id, candidate, road_graph)
+
+        state_action_values = q_values[:,0,:].gather(-1, action[:, 0].unsqueeze(1))
+        for i in range(1, match_interval):
+            state_action_values = torch.cat((state_action_values, q_values[:,i,:].gather(-1, action[:, i].unsqueeze(1))), dim=1)
 
         # Double DQN：分离动作选择和评估
         # 使用主网络选择下一个状态的最佳动作
-        next_trace, next_matched_road_segments_id, next_candidate = next_state
-        q_values_next_main = dqn_agent.main_net(next_trace, next_matched_road_segments_id, next_candidate, road_graph,
-                                                next_trace.size(1))
-        max_next_action = q_values_next_main.max(1)[1].unsqueeze(1)
+        next_traces_encoding, next_matched_road_segments_encoding, next_trace, next_matched_road_segments_id, next_candidate = next_state
+        _, _, q_values_next_main = dqn_agent.main_net(next_traces_encoding, next_matched_road_segments_encoding,
+                                                next_trace, next_matched_road_segments_id, next_candidate, road_graph)
+        max_next_action = q_values_next_main.max(-1)[1] # (batch_size, match_interval)
 
         # 使用目标网络评估选择的动作的 Q 值
-        q_values_next_target = dqn_agent.target_net(next_trace, next_matched_road_segments_id, next_candidate,
-                                                    road_graph,trace.size(1))
-        next_state_values = q_values_next_target.gather(1, max_next_action).detach()
+        _, _, q_values_next_target = dqn_agent.target_net(next_traces_encoding, next_matched_road_segments_encoding,
+                                                    next_trace, next_matched_road_segments_id, next_candidate, road_graph)
 
+        next_state_values = q_values_next_target[:,0,:].gather(-1, max_next_action[:, 0].unsqueeze(1)).detach()
+        for i in range(1, match_interval):
+            next_state_values = torch.cat((next_state_values, q_values_next_target[:,i,:].gather(-1, max_next_action[:, i].unsqueeze(1)).detach()), dim=1)
         # 计算期望 Q 值
         expected_state_action_values = (next_state_values * gamma) + reward
 
@@ -124,43 +283,54 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
             traces, roads, candidates, candidates_id, trace_lens = data
             traces, roads, candidates, candidates_id = \
                 traces.to(device), roads.to(device), candidates.to(device), candidates_id.to(device)
-            matched_road_segments_id = torch.full((traces.size(0), 1, 1), -1).to(device)
-            # matched_road_segments_id = roads[:,0:match_interval-1].unsqueeze(-1)
+            matched_road_segments_id = torch.full((traces.size(0), match_interval, 1), -1).to(device)
 
-            for point_idx in range(traces.size(1) - 1):
-            # for point_idx in range(match_interval - 1 , traces.size(1) - match_interval, match_interval):
-                sub_traces = traces[:, :point_idx + 1, :]
-                sub_candidates = candidates_id[:, point_idx, :]
+            last_traces_encoding = None
+            last_matched_road_segments_encoding = None
 
-                action = agent.select_action(sub_traces, matched_road_segments_id, sub_candidates, road_graph, point_idx)
-                reward = agent.step(action, candidates_id[:, point_idx, :], roads[:, point_idx], trace_lens, point_idx)
+            for point_idx in range(match_interval - 1 , traces.size(1) - match_interval, match_interval):
+                sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1, :]
+                sub_candidates = candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :]
+
+                traces_encoding, matched_road_segments_encoding, action = (
+                    agent.select_action(last_traces_encoding, last_matched_road_segments_encoding,
+                                        sub_traces, matched_road_segments_id, sub_candidates,
+                                        road_graph))
+                reward = agent.step(action, candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :],
+                                    roads[:, point_idx + 1 - match_interval:point_idx + 1], trace_lens, point_idx)
 
                 episode_reward += reward.sum()
 
-                cur_matched_road_segments_id = candidates_id[:, point_idx, :].gather(1, action.unsqueeze(1)).unsqueeze(-1)
-                next_matched_road_segments_id = torch.cat((matched_road_segments_id, cur_matched_road_segments_id), dim=1)
-                # 根据sub_traces长度用真实值补齐matched_road_segments_id
-                # next_matched_road_segments_id = torch.cat((next_matched_road_segments_id, roads[:, point_idx+1:point_idx+match_interval].unsqueeze(-1)), dim=1)
+                cur_matched_road_segments_id = (candidates_id[:, point_idx + 1 - match_interval, :].gather(-1, action[:, 0].unsqueeze(1)).unsqueeze(-1))
+                for i in range(1, match_interval):
+                    cur_matched_road_segments_id = torch.cat((cur_matched_road_segments_id,
+                                                              candidates_id[:, point_idx + 1 - match_interval + i, :]
+                                                              .gather(-1, action[:, i].unsqueeze(1)).unsqueeze(-1)),dim=1)
 
-                agent.memory.push(traces[:, :point_idx + 1, :], matched_road_segments_id,
-                                  candidates_id[:, point_idx, :],
-                                  traces[:, :point_idx + 2, :], next_matched_road_segments_id,
-                                  candidates_id[:, point_idx + 1, :],
+                # cur_matched_road_segments_id = action[:, 0].unsqueeze(1).unsqueeze(-1)
+                # for i in range(1, match_interval):
+                #     cur_matched_road_segments_id = torch.cat((cur_matched_road_segments_id,action[:, i].unsqueeze(1).unsqueeze(-1)), dim=1)
+
+                next_matched_road_segments_id = cur_matched_road_segments_id
+
+                agent.memory.push(last_traces_encoding, last_matched_road_segments_encoding,
+                                  sub_traces, matched_road_segments_id,
+                                  sub_candidates,
+                                  traces_encoding, matched_road_segments_encoding,
+                                  traces[:, point_idx + 1:point_idx + 1 + match_interval, :], next_matched_road_segments_id,
+                                  candidates_id[:, point_idx + 1:point_idx + 1 + match_interval, :],
                                   action, reward)
-                # agent.memory.push(traces[:, :point_idx + 1, :], matched_road_segments_id,
-                #                   candidates_id[:, point_idx, :],
-                #                   traces[:, :point_idx + 1 + match_interval, :], next_matched_road_segments_id,
-                #                   candidates_id[:, point_idx + match_interval, :],
-                #                   action, reward)
 
                 matched_road_segments_id = next_matched_road_segments_id
-
-                steps_done += 1
-                if steps_done % target_update_interval == 0:
-                    agent.update_target_net()
+                last_traces_encoding = traces_encoding
+                last_matched_road_segments_encoding = matched_road_segments_encoding
 
             # 更新损失和奖励
-            loss = optimize_model(agent.memory, agent, optimizer, road_graph, gamma, optimize_batch)
+            loss = optimize_model(agent.memory, agent, optimizer, road_graph, gamma, optimize_batch, match_interval)
+            steps_done += 1
+            if steps_done % target_update_interval == 0:
+                agent.update_target_net()
+
             if loss is not None:
                 total_loss += loss
                 update_steps += 1
@@ -177,31 +347,47 @@ def evaluate_agent(env, agent, road_graph, match_interval, correct_reward, wrong
     traces, roads, candidates, candidates_id, trace_lens = data
     traces, roads, candidates, candidates_id = \
         traces.to(device), roads.to(device), candidates.to(device), candidates_id.to(device)
-    matched_road_segments_id = torch.full((traces.size(0), 1, 1), -1).to(device)
-    # matched_road_segments_id = roads[:, 0:match_interval - 1].unsqueeze(-1)
+    matched_road_segments_id = torch.full((traces.size(0), match_interval, 1), -1).to(device)
+
+
+    last_traces_encoding = None
+    last_matched_road_segments_encoding = None
 
     correct_counts = torch.zeros(traces.size(0))
     valid_counts = torch.zeros(traces.size(0))
 
-    for point_idx in tqdm(range(traces.size(1) - 1)):
-    # for point_idx in tqdm(range(match_interval - 1 , traces.size(1) - match_interval, match_interval)):
-        sub_traces = traces[:, :point_idx + 1, :]
-        sub_candidates = candidates_id[:, point_idx, :]
+    for point_idx in tqdm(range(match_interval - 1, traces.size(1) - match_interval, match_interval)):
+        sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1, :]
+        sub_candidates = candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :]
 
-        action = agent.select_action(sub_traces, matched_road_segments_id, sub_candidates, road_graph, point_idx)
-        reward = agent.step(action, candidates_id[:, point_idx, :], roads[:, point_idx], trace_lens, point_idx)
+        traces_encoding, matched_road_segments_encoding, action = (
+            agent.select_action(last_traces_encoding, last_matched_road_segments_encoding,
+                                sub_traces, matched_road_segments_id, sub_candidates,
+                                road_graph))
+        reward = agent.step(action, candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :],
+                            roads[:, point_idx + 1 - match_interval:point_idx + 1], trace_lens, point_idx)
 
         # 更新匹配计数
-        correct_counts += (reward == correct_reward).float()
-        valid_counts += (reward != 0).float()
+        correct_counts += (reward == correct_reward).sum(1).float()
+        valid_counts += (reward != 0).sum(1).float()
 
-        cur_matched_road_segments_id = candidates_id[:, point_idx, :].gather(1, action.unsqueeze(1)).unsqueeze(-1)
-        next_matched_road_segments_id = torch.cat((matched_road_segments_id, cur_matched_road_segments_id), dim=1)
-        # 根据sub_traces长度用真实值补齐matched_road_segments_id
-        # next_matched_road_segments_id = torch.cat(
-        #     (next_matched_road_segments_id, roads[:, point_idx + 1:point_idx + match_interval].unsqueeze(-1)), dim=1)
+        cur_matched_road_segments_id = (
+            candidates_id[:, point_idx + 1 - match_interval, :].gather(-1, action[:, 0].unsqueeze(1)).unsqueeze(-1))
+        for i in range(1, match_interval):
+            cur_matched_road_segments_id = torch.cat((cur_matched_road_segments_id,
+                                                      candidates_id[:, point_idx + 1 - match_interval + i, :]
+                                                      .gather(-1, action[:, i].unsqueeze(1)).unsqueeze(-1)), dim=1)
+
+        # cur_matched_road_segments_id = action[:, 0].unsqueeze(1).unsqueeze(-1)
+        # for i in range(1, match_interval):
+        #     cur_matched_road_segments_id = torch.cat((cur_matched_road_segments_id, action[:, i].unsqueeze(1).unsqueeze(-1)),
+        #                                              dim=1)
+
+        next_matched_road_segments_id = cur_matched_road_segments_id
 
         matched_road_segments_id = next_matched_road_segments_id
+        last_traces_encoding = traces_encoding
+        last_matched_road_segments_encoding = matched_road_segments_encoding
 
     # 计算每条轨迹的准确率并存储
     accuracy_per_trace = correct_counts / valid_counts
