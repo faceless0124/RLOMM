@@ -2,140 +2,57 @@ import random
 from memory import Memory
 from model.road_gin import RoadGIN
 
-import torch.nn as nn
-import torch.nn.functional as F
 import torch
 import math
 
-# class QNetwork(nn.Module):
-#     def __init__(self, road_emb_dim=16, trace_dim=3, traces_d_model=16, candidate_d_model=16, nhead=1, num_layers=3):
-#         super(QNetwork, self).__init__()
-#         self.road_emb_dim = road_emb_dim
-#
-#         self.trace_feat_fc = nn.Linear(trace_dim, traces_d_model).cuda()
-#         # Transformer Encoder for Traces
-#         self.transformer_encoder_traces = nn.TransformerEncoder(
-#             nn.TransformerEncoderLayer(d_model=traces_d_model, nhead=nhead),
-#             num_layers=num_layers
-#         )
-#
-#         self.road_feat_fc = nn.Linear(28, road_emb_dim).cuda()  # 3*8 + 4
-#         self.road_gin = RoadGIN(road_emb_dim)
-#
-#         # Transformer Encoder for Road Segments
-#         self.transformer_encoder_segments = nn.TransformerEncoder(
-#             nn.TransformerEncoderLayer(d_model=road_emb_dim, nhead=nhead),
-#             num_layers=num_layers
-#         )
-#
-#         # attention
-#         self.attention = Attention(traces_d_model + road_emb_dim, candidate_d_model, 32)
-#
-#     def forward(self, traces, matched_road_segments_id, candidates, road_graph, seq_len, trace_len_ls=None):
-#         # 获取路网特征
-#         road_x = self.road_feat_fc(road_graph.road_x)
-#         road_emb = self.road_gin(road_x, road_graph.road_adj)
-#
-#         segments_emb = road_emb[matched_road_segments_id.squeeze(-1)]
-#         candidates_emb = road_emb[candidates.squeeze(-1)]
-#
-#         traces = traces.permute(1, 0, 2)  # 调整维度顺序为 seq_len, batch_size, feature_size
-#         segments_emb = segments_emb.permute(1, 0, 2)  # 调整维度顺序为 seq_len, batch_size, feature_size
-#
-#         traces = self.trace_feat_fc(traces)
-#
-#         # 应用位置编码和变换器编码器
-#         pe_trace = self.positional_encoding(traces.size(1), traces.size(-1)).to(traces.device)
-#         traces = traces + pe_trace.unsqueeze(0)
-#         # 类似地处理segments_emb
-#         pe_segments = self.positional_encoding(segments_emb.size(1), segments_emb.size(-1)).to(segments_emb.device)
-#         segments_emb = segments_emb + pe_segments.unsqueeze(0)
-#
-#         # 对批处理数据应用变换器编码器
-#         traces_encoded = self.transformer_encoder_traces(traces).permute(1, 0, 2)
-#         traces_encoded = traces_encoded[:, -1, :]  # 取最后一个元素
-#         segments_encoded = self.transformer_encoder_segments(segments_emb).permute(1, 0, 2)
-#         segments_encoded = segments_encoded.mean(dim=1) # 对每个序列取平均
-#
-#         # 如果candidates包含变长序列，您可能需要进行相应的处理
-#         traces_encoded = traces_encoded.unsqueeze(1) # (batch_size, 1, traces_d_model)
-#         segments_encoded = segments_encoded.unsqueeze(1) # (batch_size, 1, road_emb_dim)
-#         # candidates.shape = (batch_size, num_candidates, candidate_d_model)
-#         # 应用注意力机制
-#         action_values = self.attention(traces_encoded, segments_encoded, candidates_emb)
-#
-#         return action_values
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 class QNetwork(nn.Module):
-    def __init__(self, road_emb_dim=16, trace_dim=3, traces_d_model=16, candidate_d_model=16, num_layers=3):
+    def __init__(self, road_emb_dim=32, trace_dim=3, traces_d_model=32, candidate_d_model=32, num_layers=3):
         super(QNetwork, self).__init__()
         self.trace_feat_fc = nn.Linear(trace_dim, traces_d_model).cuda()
 
-        # GRU for Traces
-        self.gru_traces = nn.GRU(input_size=traces_d_model, hidden_size=traces_d_model, num_layers=num_layers, batch_first=True).cuda()
+        # RNN for Traces
+        self.rnn_traces = nn.RNN(input_size=traces_d_model, hidden_size=traces_d_model, num_layers=num_layers,
+                                 batch_first=True).cuda()
 
         self.road_feat_fc = nn.Linear(28, road_emb_dim).cuda()  # 3*8 + 4
         self.road_gin = RoadGIN(road_emb_dim)
 
-        # GRU for Road Segments
-        self.gru_segments = nn.GRU(input_size=road_emb_dim, hidden_size=road_emb_dim, num_layers=num_layers, batch_first=True).cuda()
+        # RNN for Road Segments
+        self.rnn_segments = nn.RNN(input_size=road_emb_dim, hidden_size=road_emb_dim, num_layers=num_layers,
+                                   batch_first=True).cuda()
 
-        self.trace_weight = nn.Linear(traces_d_model, 8).cuda()
-        self.segment_weight = nn.Linear(road_emb_dim, 8).cuda()
+        self.trace_weight = nn.Linear(traces_d_model, road_emb_dim // 2).cuda()
+        self.segment_weight = nn.Linear(road_emb_dim, road_emb_dim // 2).cuda()
 
         # attention
-        self.attention = Attention(16, candidate_d_model, 8)
+        self.attention = Attention(32, candidate_d_model, 16)
 
-    def forward(self, traces_encoding, matched_road_segments_encoding, traces, matched_road_segments_id, candidates, road_graph):
-        # 获取路网特征
+    def forward(self, traces_encoding, matched_road_segments_encoding, traces, matched_road_segments_id, candidates,
+                road_graph):
+        # 编码路网特征
         road_x = self.road_feat_fc(road_graph.road_x)
         road_emb = F.relu(road_x)  # 添加ReLU激活函数
         road_emb = self.road_gin(road_emb, road_graph.road_adj)
-
+        # 提取对应路段编码
         segments_emb = road_emb[matched_road_segments_id.squeeze(-1)]
         candidates_emb = road_emb[candidates.squeeze(-1)]
-
+        # 编码轨迹特征
         traces = self.trace_feat_fc(traces)
         traces = F.relu(traces)  # 添加ReLU激活函数
-
-        # 应用GRU模型
-        traces_output, traces_hidden = self.gru_traces(traces, traces_encoding)
-        segments_output, segments_hidden = self.gru_segments(segments_emb, matched_road_segments_encoding)
-
+        # 应用RNN模型
+        traces_output, traces_hidden = self.rnn_traces(traces, traces_encoding)
+        segments_output, segments_hidden = self.rnn_segments(segments_emb, matched_road_segments_encoding)
+        # 为轨迹和路段编码添加权重
         traces_encoded = self.trace_weight(traces_output)
-        # traces_encoded = F.relu(traces_encoded)  # 添加ReLU激活函数
         segments_encoded = self.segment_weight(segments_output)
-        # segments_encoded = F.relu(segments_encoded)  # 添加ReLU激活函数
-
         # 应用注意力机制
         action_values = self.attention(traces_encoded, segments_encoded, candidates_emb)
-
         # 返回动作值和最终隐藏状态
         return traces_hidden, segments_hidden, action_values
-
-    # def positional_encoding(self, seq_len, d_model):
-    #     """
-    #     Generate positional encoding for a given sequence length and model dimension.
-    #
-    #     Parameters:
-    #     seq_len (int): Length of the sequence or time steps in the sequence.
-    #     d_model (int): The dimension of the embeddings or the feature dimension.
-    #
-    #     Returns:
-    #     torch.Tensor: A tensor of shape [seq_len, d_model] containing positional encodings.
-    #     """
-    #     # Initialize the positional encoding matrix
-    #     position = torch.arange(seq_len).unsqueeze(1)
-    #     div_term = torch.exp(torch.arange(0, d_model, 2) * -(math.log(10000.0) / d_model))
-    #
-    #     # Compute the positional encodings
-    #     pe = torch.zeros(seq_len, d_model)
-    #     pe[:, 0::2] = torch.sin(position * div_term)
-    #     pe[:, 1::2] = torch.cos(position * div_term)
-    #
-    #     return pe
-
 
 
 class Attention(nn.Module):
@@ -144,18 +61,9 @@ class Attention(nn.Module):
         self.proj = nn.Linear(combined_dim, d_model)
         self.proj_candidates = nn.Linear(candidate_dim, d_model)
 
-    # def forward(self, trace_encoded, segments_encoded, candidates):
-    #     # 将轨迹和路段编码合并
-    #     trace_segments_combined = torch.cat((trace_encoded, segments_encoded), dim=-1)  # (batch_size, 1, combined_dim)
-    #     x_proj = torch.tanh(self.proj(trace_segments_combined))  # (batch_size, 1, d_model)
-    #     candidates_proj = torch.tanh(self.proj_candidates(candidates))  # (batch_size, num_candidates, d_model)
-    #     # Compute attention scores between each x and the candidates
-    #     scores = torch.matmul(x_proj, candidates_proj.transpose(1, 2)).squeeze(1)  # (batch_size, 1, num_candidates)
-    #     return scores
-
     def forward(self, trace_encoded, segments_encoded, candidates):
         # 将轨迹和路段编码合并
-        trace_segments_combined = torch.cat((trace_encoded, segments_encoded), dim=2)  # (batch_size, seq_len, combined_dim)
+        trace_segments_combined = torch.cat((trace_encoded, segments_encoded), dim=2) # (batch_size, seq_len, combined_dim)
         x_proj = torch.tanh(self.proj(trace_segments_combined))  # (batch_size, seq_len, d_model)
         candidates_proj = torch.tanh(self.proj_candidates(candidates))  # (batch_size, seq_len, candidates_num, d_model)
         x_proj = x_proj.unsqueeze(2)  # (batch_size, seq_len, 1, d_model)
@@ -172,36 +80,17 @@ class DQNAgent(nn.Module):
         self.target_net = QNetwork().eval()
         self.memory = Memory(100)
 
-    # def select_action(self, traces, matched_road_segments_id, candidates, road_graph, seq_len):
-    #     with torch.no_grad():
-    #         # 使用main_net进行前向传播，得到每个样本的动作Q值
-    #         action_values = self.main_net(traces, matched_road_segments_id, candidates, road_graph, seq_len)
-    #         # 对每个样本选择最大Q值的动作
-    #         return torch.argmax(action_values, dim=1)
-
-    def select_action(self, last_traces_encoding, last_matched_road_segments_encoding, traces, matched_road_segments_id, candidates, road_graph):
+    def select_action(self, last_traces_encoding, last_matched_road_segments_encoding, traces, matched_road_segments_id,
+                      candidates, road_graph):
         with torch.no_grad():
             # 使用main_net进行前向传播，得到每个样本的动作Q值
-            traces_encoding, matched_road_segments_encoding, action_values = self.main_net(last_traces_encoding, last_matched_road_segments_encoding, traces, matched_road_segments_id, candidates, road_graph)
+            traces_encoding, matched_road_segments_encoding, action_values = self.main_net(last_traces_encoding,
+                                                                                           last_matched_road_segments_encoding,
+                                                                                           traces,
+                                                                                           matched_road_segments_id,
+                                                                                           candidates, road_graph)
             # 对每个样本选择最大Q值的动作
             return traces_encoding, matched_road_segments_encoding, torch.argmax(action_values, dim=-1)
-
-    # def step(self, action, candidates_id, tgt_roads, trace_lens, point_idx):
-    #     # 计算奖励的张量
-    #     rewards = []
-    #     for i in range(action.size(0)):  # 遍历批次中的每个样本
-    #         # 如果当前点的索引大于轨迹长度，则奖励为0
-    #         if trace_lens[i] <= point_idx + 1:
-    #             reward = 0
-    #         else:
-    #             # 从candidates_id中选择由action指定的候选路段ID
-    #             selected_candidate_id = candidates_id[i, action[i]]
-    #             # 如果选中的路段ID与目标路段ID匹配，则奖励为1，否则为-1
-    #             reward = self.correct_reward if selected_candidate_id == tgt_roads[i] else self.wrong_reward
-    #
-    #         rewards.append(reward)
-    #     # 将奖励列表转换为张量
-    #     return torch.tensor(rewards)
 
     def step(self, action, candidates_id, tgt_roads, trace_lens, point_idx):
         seq_len = candidates_id.size(1)
@@ -214,7 +103,6 @@ class DQNAgent(nn.Module):
                 else:
                     # 从candidates_id中选择由action指定的候选路段ID
                     selected_candidate_id = candidates_id[i, j, action[i, j]]
-                    # selected_candidate_id = action[i, j]
                     # 如果选中的路段ID与目标路段ID匹配，则奖励为1，否则为-1
                     reward = self.correct_reward if selected_candidate_id == tgt_roads[i, j] else self.wrong_reward
                 rewards[j].append(reward)
