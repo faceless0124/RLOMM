@@ -2,6 +2,8 @@ import argparse
 import json
 import os
 import time
+import math
+from datetime import datetime
 
 import torch
 import numpy as np
@@ -9,6 +11,7 @@ import torch.optim as optim
 import torch.nn as nn
 import random
 import os.path as osp
+from copy import deepcopy
 
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -124,6 +127,7 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
                 optimize_batch, match_interval, correct_reward, wrong_reward, device):
     steps_done = 0
     best_acc = 0
+    best_model = None
     for episode in range(training_episode):
         env.reset()
         episode_reward = 0
@@ -152,7 +156,6 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
                                         sub_traces, matched_road_segments_id, sub_candidates, road_graph))
                 reward = agent.step(action, candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :],
                                     roads[:, point_idx + 1 - match_interval:point_idx + 1], trace_lens, point_idx)
-
                 episode_reward += reward.sum()
 
                 cur_matched_road_segments_id = (
@@ -178,6 +181,8 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
                 matched_road_segments_id = next_matched_road_segments_id
                 last_traces_encoding = traces_encoding
                 last_matched_road_segments_encoding = matched_road_segments_encoding
+                # last_traces_encoding = None
+                # last_matched_road_segments_encoding = None
 
             # 更新损失和奖励
             loss = optimize_model(agent.memory, agent, optimizer, road_graph, gamma, optimize_batch, match_interval)
@@ -193,61 +198,70 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
         avg_loss = total_loss / update_steps if update_steps > 0 else 0
         print(f"Episode {episode}: Total Reward: {episode_reward}, Average Loss: {avg_loss}")
         acc = evaluate_agent(eval_env, agent, road_graph, match_interval, correct_reward, wrong_reward, device)
-        best_acc = max(best_acc, acc)
+        if best_acc < acc:
+            best_model = deepcopy(agent)
+            best_acc = acc
+    current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"best_model_{current_time}.pt"
+    torch.save(best_model.state_dict(), filename)
     print(f"Best Accuracy: {best_acc}")
 
 
 def evaluate_agent(env, agent, road_graph, match_interval, correct_reward, wrong_reward, device):
     env.reset()
-    data, done = env.step()
-    traces, roads, candidates, candidates_id, trace_lens = data
-    traces, roads, candidates, candidates_id = \
-        traces.to(device), roads.to(device), candidates.to(device), candidates_id.to(device)
-    matched_road_segments_id = torch.full((traces.size(0), match_interval, 1), -1).to(device)
+    accuracy_per_trace = 0
+    cnt = 0
+    for batch in tqdm(range(env.num_of_batches)):
+        data, done = env.step()
+        traces, roads, candidates, candidates_id, trace_lens = data
+        traces, roads, candidates, candidates_id = \
+            traces.to(device), roads.to(device), candidates.to(device), candidates_id.to(device)
+        matched_road_segments_id = torch.full((traces.size(0), match_interval, 1), -1).to(device)
 
-    last_traces_encoding = None
-    last_matched_road_segments_encoding = None
+        last_traces_encoding = None
+        last_matched_road_segments_encoding = None
 
-    correct_counts = torch.zeros(traces.size(0))
-    valid_counts = torch.zeros(traces.size(0))
+        correct_counts = torch.zeros(traces.size(0))
+        valid_counts = torch.zeros(traces.size(0))
+        # start_time = time.time()
+        for point_idx in range(match_interval - 1, traces.size(1) - match_interval, match_interval):
+            sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1, :]
+            sub_candidates = candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :]
 
-    for point_idx in tqdm(range(match_interval - 1, traces.size(1) - match_interval, match_interval)):
-        sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1, :]
-        sub_candidates = candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :]
+            traces_encoding, matched_road_segments_encoding, action = (
+                agent.select_action(last_traces_encoding, last_matched_road_segments_encoding,
+                                    sub_traces, matched_road_segments_id, sub_candidates,
+                                    road_graph))
+            reward = agent.step(action, candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :],
+                                roads[:, point_idx + 1 - match_interval:point_idx + 1], trace_lens, point_idx)
 
-        traces_encoding, matched_road_segments_encoding, action = (
-            agent.select_action(last_traces_encoding, last_matched_road_segments_encoding,
-                                sub_traces, matched_road_segments_id, sub_candidates,
-                                road_graph))
-        reward = agent.step(action, candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :],
-                            roads[:, point_idx + 1 - match_interval:point_idx + 1], trace_lens, point_idx)
+            # 更新匹配计数
+            correct_counts += (reward == correct_reward).sum(1).float()
+            valid_counts += (reward != 0).sum(1).float()
 
-        # 更新匹配计数
-        correct_counts += (reward == correct_reward).sum(1).float()
-        valid_counts += (reward != 0).sum(1).float()
+            cur_matched_road_segments_id = (
+                candidates_id[:, point_idx + 1 - match_interval, :].gather(-1, action[:, 0].unsqueeze(1)).unsqueeze(-1))
+            for i in range(1, match_interval):
+                cur_matched_road_segments_id = torch.cat((cur_matched_road_segments_id,
+                                                          candidates_id[:, point_idx + 1 - match_interval + i, :]
+                                                          .gather(-1, action[:, i].unsqueeze(1)).unsqueeze(-1)), dim=1)
 
-        cur_matched_road_segments_id = (
-            candidates_id[:, point_idx + 1 - match_interval, :].gather(-1, action[:, 0].unsqueeze(1)).unsqueeze(-1))
-        for i in range(1, match_interval):
-            cur_matched_road_segments_id = torch.cat((cur_matched_road_segments_id,
-                                                      candidates_id[:, point_idx + 1 - match_interval + i, :]
-                                                      .gather(-1, action[:, i].unsqueeze(1)).unsqueeze(-1)), dim=1)
+            next_matched_road_segments_id = cur_matched_road_segments_id
 
-        next_matched_road_segments_id = cur_matched_road_segments_id
+            matched_road_segments_id = next_matched_road_segments_id
+            last_traces_encoding = traces_encoding
+            last_matched_road_segments_encoding = matched_road_segments_encoding
+        # end_time = time.time()
+        # print(f"执行时间：{end_time - start_time} 秒")
 
-        matched_road_segments_id = next_matched_road_segments_id
-        last_traces_encoding = traces_encoding
-        last_matched_road_segments_encoding = matched_road_segments_encoding
+        # 计算每条轨迹的准确率并存储
+        accuracy_per_trace += (correct_counts / valid_counts).mean()
+        cnt += 1
 
-    # 计算每条轨迹的准确率并存储
-    accuracy_per_trace = correct_counts / valid_counts
-    all_accuracy = correct_counts.sum() / valid_counts.sum()
-    cnt = (correct_counts != 0)
-
-    print("matched traces:{}".format(cnt.sum()))
-    average_accuracy = accuracy_per_trace.mean()
-    print(f"Average Accuracy: {average_accuracy.item()}, All Accuracy: {all_accuracy.item()}")
-    return average_accuracy.item()
+    # print("matched traces:{}".format(cnt.sum()))
+    average_accuracy = accuracy_per_trace.item()/cnt
+    print(f"Average Accuracy: {average_accuracy}")
+    return average_accuracy
 
 
 if __name__ == '__main__':
@@ -267,8 +281,8 @@ if __name__ == '__main__':
     train_loader = DataLoader(dataset=train_set, batch_size=train_batch_size, shuffle=True, collate_fn=padding)
     test_loader = DataLoader(dataset=test_set, batch_size=test_batch_size, collate_fn=padding)
 
-    train_env = Environment(train_loader, train_size // train_batch_size)
-    eval_env = Environment(test_loader, test_size // test_batch_size)
+    train_env = Environment(train_loader, math.ceil(train_size / train_batch_size))
+    eval_env = Environment(test_loader, math.ceil(test_size / test_batch_size))
 
     print("loading dataset finished!")
 
