@@ -27,7 +27,7 @@ class MyDataset(Dataset):
         # 归一化轨迹和候选点数据
         # self.traces_ls = [self.normalize_traces(trace) for trace in self.traces_ls]
         self.traces_ls = [self.trace_gps2grid(trace) for trace in self.traces_ls]
-        self.candidates = [self.normalize_candidates(candidate) for candidate in self.candidates]
+        # self.candidates = [self.normalize_candidates(candidate) for candidate in self.candidates]
         self.time_stamps = [self.normalize_time_stamps(ts) for ts in self.time_stamps]
 
         self.cnt = self.count_point()
@@ -90,7 +90,7 @@ class MyDataset(Dataset):
 def padding(batch):
     trace_lens = [len(sample[0]) for sample in batch]
     # road_lens = [len(sample[1]) for sample in batch]
-    candidates_lens = [len(candidates) for sample in batch for candidates in sample[3]]
+    candidates_lens = [len(candidates_id) for sample in batch for candidates_id in sample[3]]
     max_tlen, max_clen = max(trace_lens), max(candidates_lens)
     traces, time_stamp, roads, candidates, candidates_id = [], [], [], [], []
     # 0: [PAD]
