@@ -58,13 +58,13 @@ def loadConfig(config):
     match_interval = config['match_interval']
 
     correct_reward = config['correct_reward']
-    wrong_reward = config['wrong_reward']
+    mask_reward = config['mask_reward']
 
     return (training_episode, train_batch_size, test_batch_size, train_size, test_size, learning_rate, gamma,
-            target_update_interval, downsample_rate, optimize_batch_size, match_interval, correct_reward, wrong_reward)
+            target_update_interval, downsample_rate, optimize_batch_size, match_interval, correct_reward, mask_reward)
 
 
-def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma, optimize_batch, match_interval):
+def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma, optimize_batch, match_interval, mask_reward):
     if len(memory) < optimize_batch:
         return
 
@@ -75,7 +75,7 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma, optimize_bat
         # 解压单条记录中的 state, next_state, action, reward
         state, action, next_state, reward = transition
         reward = reward.to(device)
-        mask = (reward != 0).float()
+        mask = (reward != mask_reward).float()
 
         # 计算当前状态的 Q 值
         traces_encoding, matched_road_segments_encoding, trace, matched_road_segments_id, candidate = state
@@ -124,7 +124,7 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, gamma, optimize_bat
 
 
 def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, gamma, target_update_interval,
-                optimize_batch, match_interval, correct_reward, wrong_reward, device):
+                optimize_batch, match_interval, correct_reward, mask_reward, device):
     steps_done = 0
     best_acc = 0
     best_model = None
@@ -140,8 +140,8 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
                 break
 
             traces, roads, candidates, candidates_id, trace_lens = data
-            traces, roads, candidates, candidates_id = \
-                traces.to(device), roads.to(device), candidates.to(device), candidates_id.to(device)
+            traces, roads, candidates_id = \
+                traces.to(device), roads.to(device), candidates_id.to(device)
             matched_road_segments_id = torch.full((traces.size(0), match_interval, 1), -1).to(device)
 
             last_traces_encoding = None
@@ -154,7 +154,7 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
                 traces_encoding, matched_road_segments_encoding, action = (
                     agent.select_action(last_traces_encoding, last_matched_road_segments_encoding,
                                         sub_traces, matched_road_segments_id, sub_candidates, road_graph))
-                reward = agent.step(action, candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :],
+                reward = agent.step(matched_road_segments_id[:,-1,:], road_graph, action, candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :],
                                     roads[:, point_idx + 1 - match_interval:point_idx + 1], trace_lens, point_idx)
                 episode_reward += reward.sum()
 
@@ -185,7 +185,7 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
                 # last_matched_road_segments_encoding = None
 
             # 更新损失和奖励
-            loss = optimize_model(agent.memory, agent, optimizer, road_graph, gamma, optimize_batch, match_interval)
+            loss = optimize_model(agent.memory, agent, optimizer, road_graph, gamma, optimize_batch, match_interval, mask_reward)
             steps_done += 1
             if steps_done % target_update_interval == 0:
                 agent.update_target_net()
@@ -197,7 +197,7 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
         # 计算并打印每个episode的平均loss
         avg_loss = total_loss / update_steps if update_steps > 0 else 0
         print(f"Episode {episode}: Total Reward: {episode_reward}, Average Loss: {avg_loss}")
-        acc = evaluate_agent(eval_env, agent, road_graph, match_interval, correct_reward, wrong_reward, device)
+        acc = evaluate_agent(eval_env, agent, road_graph, match_interval, correct_reward, mask_reward, device)
         if best_acc < acc:
             best_model = deepcopy(agent)
             best_acc = acc
@@ -207,15 +207,15 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, training_episode, g
     print(f"Best Accuracy: {best_acc}")
 
 
-def evaluate_agent(env, agent, road_graph, match_interval, correct_reward, wrong_reward, device):
+def evaluate_agent(env, agent, road_graph, match_interval, correct_reward, mask_reward, device):
     env.reset()
     accuracy_per_trace = 0
     cnt = 0
     for batch in tqdm(range(env.num_of_batches)):
         data, done = env.step()
         traces, roads, candidates, candidates_id, trace_lens = data
-        traces, roads, candidates, candidates_id = \
-            traces.to(device), roads.to(device), candidates.to(device), candidates_id.to(device)
+        traces, roads, candidates_id = \
+            traces.to(device), roads.to(device), candidates_id.to(device)
         matched_road_segments_id = torch.full((traces.size(0), match_interval, 1), -1).to(device)
 
         last_traces_encoding = None
@@ -232,12 +232,12 @@ def evaluate_agent(env, agent, road_graph, match_interval, correct_reward, wrong
                 agent.select_action(last_traces_encoding, last_matched_road_segments_encoding,
                                     sub_traces, matched_road_segments_id, sub_candidates,
                                     road_graph))
-            reward = agent.step(action, candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :],
+            reward = agent.step(matched_road_segments_id[:, -1, :], road_graph, action, candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :],
                                 roads[:, point_idx + 1 - match_interval:point_idx + 1], trace_lens, point_idx)
 
             # 更新匹配计数
             correct_counts += (reward == correct_reward).sum(1).float()
-            valid_counts += (reward != 0).sum(1).float()
+            valid_counts += (reward != mask_reward).sum(1).float()
 
             cur_matched_road_segments_id = (
                 candidates_id[:, point_idx + 1 - match_interval, :].gather(-1, action[:, 0].unsqueeze(1)).unsqueeze(-1))
@@ -267,9 +267,9 @@ def evaluate_agent(env, agent, road_graph, match_interval, correct_reward, wrong
 if __name__ == '__main__':
     (training_episode, train_batch_size, test_batch_size, train_size, test_size, learning_rate, gamma,
      target_update_interval, downsample_rate, optimize_batch_size, match_interval, correct_reward,
-     wrong_reward) = loadConfig(config)
+     mask_reward) = loadConfig(config)
 
-    data_path = osp.join('./data/data' + str(downsample_rate) + '_+timestamp' + '/')
+    data_path = osp.join('./data/data' + str(downsample_rate) + '_dis' + '/')
     road_graph = RoadGraph(root_path='./data',
                            layer=4,
                            gamma=10000,
@@ -286,7 +286,7 @@ if __name__ == '__main__':
 
     print("loading dataset finished!")
 
-    agent = DQNAgent(correct_reward, wrong_reward)
+    agent = DQNAgent(correct_reward, mask_reward)
     agent.to(device)
     optimizer = optim.Adam(agent.parameters(), lr=learning_rate)
     print(agent)
@@ -296,4 +296,4 @@ if __name__ == '__main__':
     print("Number of Parameters: {}".format(num_of_parameters), flush=True)
     print("Starting training...")
     train_agent(train_env, eval_env, agent, optimizer, road_graph, training_episode, gamma, target_update_interval,
-                optimize_batch_size, match_interval, correct_reward, wrong_reward, device)
+                optimize_batch_size, match_interval, correct_reward, mask_reward, device)
