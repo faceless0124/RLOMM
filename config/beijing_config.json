@@ -15,6 +15,6 @@
     "match_interval": 4,
 
     "correct_reward": 1,
-    "wrong_reward": -1
+    "mask_reward": 0
 }
 
