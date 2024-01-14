@@ -72,10 +72,10 @@ class Attention(nn.Module):
 
 
 class DQNAgent(nn.Module):
-    def __init__(self, correct_reward, wrong_reward):
+    def __init__(self, correct_reward, mask_reward):
         super(DQNAgent, self).__init__()
         self.correct_reward = correct_reward
-        self.wrong_reward = wrong_reward
+        self.mask_reward = mask_reward
         self.main_net = QNetwork()
         self.target_net = QNetwork().eval()
         self.memory = Memory(100)
@@ -92,19 +92,29 @@ class DQNAgent(nn.Module):
             # 对每个样本选择最大Q值的动作
             return traces_encoding, matched_road_segments_encoding, torch.argmax(action_values, dim=-1)
 
-    def step(self, action, candidates_id, tgt_roads, trace_lens, point_idx):
+    def step(self, last_matched_road, road_graph, action, candidates_id, tgt_roads, trace_lens, point_idx):
         seq_len = candidates_id.size(1)
         rewards = [[] for _ in range(seq_len)]  # 计算奖励的张量
         for i in range(action.size(0)):  # 首先遍历批次中的每个样本
+            last_road_id = last_matched_road[i].item()
             for j in range(seq_len):  # 然后遍历样本的序列长度
                 # 如果当前点的索引大于轨迹长度，则奖励为0
                 if trace_lens[i] <= point_idx + 1 - (seq_len - 1) + j:
-                    reward = 0
+                    reward = self.mask_reward
                 else:
                     # 从candidates_id中选择由action指定的候选路段ID
                     selected_candidate_id = candidates_id[i, j, action[i, j]]
-                    # 如果选中的路段ID与目标路段ID匹配，则奖励为1，否则为-1
-                    reward = self.correct_reward if selected_candidate_id == tgt_roads[i, j] else self.wrong_reward
+                    # 根据选中的路段与目标路段距离给予奖励
+                    reward = -road_graph.real_distances.get((selected_candidate_id.item(), tgt_roads[i, j].item()))
+                    if reward != 0:
+                        connectivity = road_graph.precomputed_distances.get((last_road_id, selected_candidate_id.item()),-1)
+                        if connectivity == -1:
+                            reward = reward * 3
+                        elif connectivity > 2:
+                            reward = reward * 1.5
+                    else:
+                        reward = self.correct_reward
+                    last_road_id = selected_candidate_id.item()
                 rewards[j].append(reward)
 
         # 将奖励列表转换为张量
