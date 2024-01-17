@@ -32,13 +32,16 @@ class RoadGraph():
         # A_list [n, n]
         self.A_list = self.get_adj_poly(A, layer, gamma)
 
-        # 尝试加载预计算的距离
-        distances_file = root_path + 'precomputed_distances.pkl'
-        real_distances_file = root_path + 'road_distance.pkl'
-        with open(distances_file, 'rb') as f:
-            self.precomputed_distances = pickle.load(f)
-        with open(real_distances_file, 'rb') as f:
-            self.real_distances = pickle.load(f)
+        # 读取预计算的连通性距离和真实距离
+        # connectivity_distances_file = root_path + 'connectivity_distances.pkl'
+        # real_distances_file = root_path + 'real_distances.pkl'
+        # with open(connectivity_distances_file, 'rb') as f:
+        #     self.connectivity_distances = pickle.load(f)
+        # with open(real_distances_file, 'rb') as f:
+        #     self.real_distances = pickle.load(f)
+
+        self.connectivity_distances = None
+        self.real_distances = None
 
     def get_adj_poly(self, A, layer, gamma):
         A_ = A.to(self.device)
@@ -97,7 +100,7 @@ class RoadGraph():
                     distances[(road_id1, road_id2)] = distance.get(road_id2, -1)
 
         # 持久化存储距离数据
-        with open('precomputed_distances.pkl', 'wb') as f:
+        with open('connectivity_distances.pkl', 'wb') as f:
             pickle.dump(distances, f)
 
         return distances
