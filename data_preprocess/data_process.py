@@ -132,7 +132,7 @@ class DataProcess():
             distance = road_distance_data.get((target_link_id, candidate_id))
             if distance is not None:
                 # 如果堆中少于10个元素，直接添加
-                if len(closest_candidates) < 10:
+                if len(closest_candidates) < 5:
                     heapq.heappush(closest_candidates, (-distance, candidate_id))
                 # 否则，只有当找到更近的路段时才添加
                 elif distance < -closest_candidates[0][0]:
@@ -305,6 +305,6 @@ class DataProcess():
 if __name__ == "__main__":
     downsample_rate = sys.argv[1]
     path = '../data/'
-    data_path = path + 'data' + downsample_rate + '_dis' + '/'
+    data_path = path + 'data' + downsample_rate + '_dis_5' + '/'
     DataProcess(traj_input_path=path+'trace.txt', output_dir=data_path, sample_rate=float(downsample_rate))
     pass
