@@ -1,5 +1,6 @@
 import json
 import os.path as osp
+import pickle
 from torch.utils.data import Dataset
 import torch
 import data_preprocess.utils as utils
@@ -12,12 +13,22 @@ class MyDataset(Dataset):
             path += '/'
         self.data_path = osp.join(path, f"{name}_data/{name}.json")
         self.MIN_LAT, self.MIN_LNG, self.MAX_LAT, self.MAX_LNG = utils.get_border('./data/road.txt')
+        self.map_path = osp.join(path, "used_pkl/grid2traceid_dict.pkl")
         self.buildingDataset(self.data_path)
 
     def buildingDataset(self, data_path):
+        grid2traceid_dict = pickle.load(open(self.map_path, 'rb'))
+        self.traces_ls = []
+
         with open(data_path, "r") as fp:
             data = json.load(fp)
-            self.traces_ls = data[0::5]
+            # self.traces_ls = data[0::5]
+            for gps_ls in data[0::5]:
+                traces = []
+                for gps in gps_ls:
+                    gridx, gridy = utils.gps2grid(gps[0], gps[1], MIN_LAT=self.MIN_LAT, MIN_LNG=self.MIN_LNG)
+                    traces.append(grid2traceid_dict[(gridx, gridy)] + 1)
+                self.traces_ls.append(traces)
             self.time_stamps = data[1::5]
             self.roads_ls = data[2::5]
             self.candidates = data[3::5]
@@ -26,7 +37,7 @@ class MyDataset(Dataset):
 
         # 归一化轨迹和候选点数据
         # self.traces_ls = [self.normalize_traces(trace) for trace in self.traces_ls]
-        self.traces_ls = [self.trace_gps2grid(trace) for trace in self.traces_ls]
+        # self.traces_ls = [self.trace_gps2grid(trace) for trace in self.traces_ls]
         # self.candidates = [self.normalize_candidates(candidate) for candidate in self.candidates]
         self.time_stamps = [self.normalize_time_stamps(ts) for ts in self.time_stamps]
 
@@ -90,18 +101,21 @@ class MyDataset(Dataset):
 def padding(batch):
     trace_lens = [len(sample[0]) for sample in batch]
     # road_lens = [len(sample[1]) for sample in batch]
-    candidates_lens = [len(candidates_id) for sample in batch for candidates_id in sample[3]]
+    candidates_lens = [len(candidates) for sample in batch for candidates in sample[3]]
     max_tlen, max_clen = max(trace_lens), max(candidates_lens)
     traces, time_stamp, roads, candidates, candidates_id = [], [], [], [], []
     # 0: [PAD]
     for sample in batch:
-        traces.append(sample[0] + [[0, 0]] * (max_tlen - len(sample[0])))
+        # traces.append(sample[0] + [[0, 0]] * (max_tlen - len(sample[0])))
+        traces.append(sample[0] + [0] * (max_tlen - len(sample[0])))
         time_stamp.append(sample[1] + [-1] * (max_tlen - len(sample[1])))
         roads.append(sample[2] + [-1] * (max_tlen - len(sample[2])))
-        candidates.append([candidates + [[0, 0]] * (max_clen - len(candidates)) for candidates in sample[3]] + [
-            [[0, 0]] * max_clen] * (max_tlen - len(sample[3])))
+        # candidates.append([candidates + [0] * (max_clen - len(candidates)) for candidates in sample[3]] + [
+        #     [0] * max_clen] * (max_tlen - len(sample[3])))
+        candidates.append([candidates + [[0,0]] * (max_clen - len(candidates)) for candidates in sample[3]] + [
+            [[0,0]] * max_clen] * (max_tlen - len(sample[3])))
         candidates_id.append(
             [candidates_id + [8533] * (max_clen - len(candidates_id)) for candidates_id in sample[4]] + [
-                [-1] * max_clen] * (max_tlen - len(sample[4])))
-    traces = torch.cat((torch.FloatTensor(traces), torch.FloatTensor(time_stamp).unsqueeze(-1)), dim=-1)
-    return traces, torch.LongTensor(roads), torch.FloatTensor(candidates), torch.LongTensor(candidates_id), trace_lens
+                [8533] * max_clen] * (max_tlen - len(sample[4])))
+    # traces = torch.cat((torch.FloatTensor(traces), torch.FloatTensor(time_stamp).unsqueeze(-1)), dim=-1)
+    return torch.LongTensor(traces), torch.LongTensor(roads), torch.FloatTensor(candidates), torch.LongTensor(candidates_id), trace_lens
