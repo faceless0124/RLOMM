@@ -1,6 +1,6 @@
 {
     "seed": 12418,
-    "training_episode": 500,
+    "training_episode": 300,
     "learning_rate": 1e-2,
 
     "train_batch_size": 512,
