@@ -11,17 +11,17 @@ import torch.nn.functional as F
 
 
 class QNetwork(nn.Module):
-    def __init__(self, road_emb_dim=32, traces_emb_dim=32, candidate_d_model=32, num_layers=3):
+    def __init__(self, road_emb_dim=128, traces_emb_dim=128, candidate_d_model=128, num_layers=3):
         super(QNetwork, self).__init__()
         self.emb_dim = traces_emb_dim
-        self.trace_feat_fc = nn.Linear(4, traces_emb_dim).cuda()
-        self.traces_linear = nn.Linear(traces_emb_dim * 2, traces_emb_dim).cuda()
-
+        self.traces_linear = nn.Linear(2 * self.emb_dim, self.emb_dim).cuda()
         # RNN for Traces
-        self.rnn_traces = nn.RNN(input_size=traces_emb_dim*2, hidden_size=traces_emb_dim*2, num_layers=num_layers,
+        self.rnn_traces = nn.RNN(input_size=traces_emb_dim, hidden_size=traces_emb_dim, num_layers=num_layers,
                                  batch_first=True).cuda()
 
         self.road_feat_fc = nn.Linear(28, road_emb_dim).cuda()  # 3*8 + 4
+        self.trace_feat_fc = nn.Linear(4, traces_emb_dim).cuda()
+
         self.road_gin = RoadGIN(road_emb_dim)
         self.trace_gcn = TraceGCN(traces_emb_dim)
 
@@ -29,11 +29,11 @@ class QNetwork(nn.Module):
         self.rnn_segments = nn.RNN(input_size=road_emb_dim, hidden_size=road_emb_dim, num_layers=num_layers,
                                    batch_first=True).cuda()
 
-        self.trace_weight = nn.Linear(traces_emb_dim*2, road_emb_dim).cuda()
-        self.segment_weight = nn.Linear(road_emb_dim, road_emb_dim).cuda()
+        self.trace_weight = nn.Linear(traces_emb_dim, traces_emb_dim//2).cuda()
+        self.segment_weight = nn.Linear(road_emb_dim, road_emb_dim//2).cuda()
 
         # attention
-        self.attention = Attention(traces_emb_dim*2, candidate_d_model, traces_emb_dim)
+        self.attention = Attention(traces_emb_dim, candidate_d_model, traces_emb_dim)
 
     def forward(self, traces_encoding, matched_road_segments_encoding, traces, matched_road_segments_id, candidates,
                 road_graph, trace_graph):
@@ -44,6 +44,8 @@ class QNetwork(nn.Module):
         segments_emb = road_emb[matched_road_segments_id.squeeze(-1)]
         candidates_emb = road_emb[candidates.squeeze(-1)]
         # 编码轨迹特征
+        # trace_graph.map_matrix [10551, 8533]
+        # road_emb [8534, 32]
         pure_grid_feat = torch.mm(trace_graph.map_matrix, road_emb[:-1, :])
         pure_grid_feat[trace_graph.singleton_grid_mask] = self.trace_feat_fc(trace_graph.singleton_grid_location)
         full_grid_emb = torch.zeros(trace_graph.num_grids + 1, 2 * self.emb_dim).to(traces.device)
@@ -53,7 +55,7 @@ class QNetwork(nn.Module):
                                               trace_graph.trace_weight)
         # 提取对应路段编码
         traces_emb = full_grid_emb[traces]
-        # traces_emb = self.traces_linear(traces_emb)
+        traces_emb = self.traces_linear(traces_emb)
         # 应用RNN模型
         traces_output, traces_hidden = self.rnn_traces(traces_emb, traces_encoding)
         segments_output, segments_hidden = self.rnn_segments(segments_emb, matched_road_segments_encoding)
@@ -115,16 +117,17 @@ class DQNAgent(nn.Module):
                 else:
                     # 从candidates_id中选择由action指定的候选路段ID
                     selected_candidate_id = candidates_id[i, j, action[i, j]]
+                    # 根据选中的路段与目标路段是否相同给予奖励
                     reward = self.correct_reward if selected_candidate_id == tgt_roads[i, j] else -1
                     # 根据选中的路段与目标路段距离给予奖励
                     # reward = -road_graph.real_distances.get((selected_candidate_id.item(), tgt_roads[i, j].item()))
-                    # if reward != 0:
-                    #     reward = -1
+                    # if reward == -1:
                     #     connectivity = road_graph.connectivity_distances.get((last_road_id, selected_candidate_id.item()),-1)
                     #     if connectivity == -1:
-                    #         reward = reward * 3
+                    #         reward = reward * 2
                     #     elif connectivity > 2:
                     #         reward = reward * 1.5
+                        # reward = min(reward, -1)
                     # else:
                     #     reward = self.correct_reward
                     # last_road_id = selected_candidate_id.item()
