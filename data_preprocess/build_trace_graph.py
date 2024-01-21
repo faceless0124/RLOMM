@@ -90,7 +90,7 @@ def build_pyG(G):
 if __name__ == "__main__":
     downsample_rate = sys.argv[1]
     path = '../data/'
-    data_path = path + 'data' + downsample_rate + '_nei/'
+    data_path = path + 'data' + downsample_rate + '_dis/'
     grid2id_dict, trace_dict = get_data(data_path + 'data_split/downsample_trace.txt')
     G = build_graph(grid2id_dict, trace_dict)
     nx.write_gml(G, data_path + "trace_graph.gml")
