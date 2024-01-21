@@ -110,10 +110,10 @@ def padding(batch):
         traces.append(sample[0] + [0] * (max_tlen - len(sample[0])))
         time_stamp.append(sample[1] + [-1] * (max_tlen - len(sample[1])))
         roads.append(sample[2] + [-1] * (max_tlen - len(sample[2])))
-        # candidates.append([candidates + [0] * (max_clen - len(candidates)) for candidates in sample[3]] + [
-        #     [0] * max_clen] * (max_tlen - len(sample[3])))
-        candidates.append([candidates + [[0,0]] * (max_clen - len(candidates)) for candidates in sample[3]] + [
-            [[0,0]] * max_clen] * (max_tlen - len(sample[3])))
+        candidates.append([candidates + [0] * (max_clen - len(candidates)) for candidates in sample[3]] + [
+            [0] * max_clen] * (max_tlen - len(sample[3])))
+        # candidates.append([candidates + [[0,0]] * (max_clen - len(candidates)) for candidates in sample[3]] + [
+        #     [[0,0]] * max_clen] * (max_tlen - len(sample[3])))
         candidates_id.append(
             [candidates_id + [8533] * (max_clen - len(candidates_id)) for candidates_id in sample[4]] + [
                 [8533] * max_clen] * (max_tlen - len(sample[4])))
