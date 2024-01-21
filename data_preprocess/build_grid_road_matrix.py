@@ -8,7 +8,7 @@ from utils import create_dir
 """
 downsample_rate = sys.argv[1]
 path = '../data/'
-data_path = path + 'data' + downsample_rate + '_nei/'
+data_path = path + 'data' + downsample_rate + '_dis/'
 pkl_path = data_path + 'used_pkl/'
 create_dir(pkl_path)
 
