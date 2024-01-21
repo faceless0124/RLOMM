@@ -129,9 +129,11 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, trace_graph, traini
     steps_done = 0
     best_acc = 0
     best_model = None
+    early_stop_counter = 0
+    early_stop_threshold = 20
     for episode in range(training_episode):
         env.reset()
-        episode_reward = 0
+        episode_reward = 0.0
         total_loss = 0.0
         update_steps = 0
 
@@ -203,6 +205,12 @@ def train_agent(env, eval_env, agent, optimizer, road_graph, trace_graph, traini
         if best_acc < acc:
             best_model = deepcopy(agent)
             best_acc = acc
+            early_stop_counter = 0  # 重置计数器，因为找到了更好的模型
+        else:
+            early_stop_counter += 1  # 没有改进，增加计数器
+        if early_stop_counter >= early_stop_threshold:
+            print(f"Early stopping triggered after {episode + 1} episodes.")
+            break
     current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"best_model_{current_time}.pt"
     torch.save(best_model.state_dict(), filename)
@@ -225,7 +233,7 @@ def evaluate_agent(env, agent, road_graph, trace_graph, match_interval, correct_
 
         correct_counts = torch.zeros(traces.size(0))
         valid_counts = torch.zeros(traces.size(0))
-        # start_time = time.time()
+        start_time = time.time()
         for point_idx in range(match_interval - 1, traces.size(1) - match_interval, match_interval):
             sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1]
             sub_candidates = candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :]
@@ -253,8 +261,8 @@ def evaluate_agent(env, agent, road_graph, trace_graph, match_interval, correct_
             matched_road_segments_id = next_matched_road_segments_id
             last_traces_encoding = traces_encoding
             last_matched_road_segments_encoding = matched_road_segments_encoding
-        # end_time = time.time()
-        # print(f"执行时间：{end_time - start_time} 秒")
+        end_time = time.time()
+        print(f"执行时间：{end_time - start_time} 秒")
 
         # 计算每条轨迹的准确率并存储
         accuracy_per_trace += (correct_counts / valid_counts).mean()
@@ -271,7 +279,7 @@ if __name__ == '__main__':
      target_update_interval, downsample_rate, optimize_batch_size, match_interval, correct_reward,
      mask_reward) = loadConfig(config)
 
-    data_path = osp.join('./data/data' + str(downsample_rate) + '_nei' + '/')
+    data_path = osp.join('./data/data' + str(downsample_rate) + '_dis' + '/')
     road_graph = RoadGraph(root_path='./data', layer=4, gamma=10000, device=device)
     trace_graph = TraceGraph(data_path=data_path, device=device)
 
