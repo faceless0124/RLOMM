@@ -12,7 +12,6 @@ data_path = path + 'data' + downsample_rate + '_dis/'
 pkl_path = data_path + 'used_pkl/'
 create_dir(pkl_path)
 
-
 road_graph = pickle.load(open(path + 'road_graph.pkl', 'rb'))
 trace_graph = nx.read_gml(data_path + 'trace_graph.gml', destringizer=int)
 grid_x = torch.load(data_path + 'trace_graph_pt/x.pt')
@@ -41,4 +40,3 @@ torch.save(singleton_grid_loction,
 torch.save(singleton_grid_mask,
            data_path + 'trace_graph_pt/singleton_grid_mask.pt')
 torch.save(map_matrix, data_path + 'trace_graph_pt/map_matrix.pt')
-# print(map_matrix)

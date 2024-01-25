@@ -14,7 +14,8 @@ from utils import create_dir, get_border
 MIN_LAT, MIN_LNG, MAX_LAT, MAX_LNG = get_border('../data/road.txt')
 GRID_SIZE = 50
 
-def randomDownSampleBySize(sampleData: list, sampleRate: float) -> list:
+
+def randomDownSampleBySize(sampleData: list, sampleRate: float) -> (list, list, list):
     """
         randomly sampling
     """
@@ -26,7 +27,7 @@ def randomDownSampleBySize(sampleData: list, sampleRate: float) -> list:
         for j in range(2, len(trajList) - 1):
             if (random.random() <= sampleRate):
                 tempRes.append(trajList[j])
-                tmpIdx.append(j-1)
+                tmpIdx.append(j - 1)
         tempRes.append(trajList[-1])  # 尾节点
         tmpIdx.append(len(trajList) - 2)
         resData.append(tempRes)
@@ -230,11 +231,11 @@ class DataProcess():
             if lens < self.min_road_len:
                 continue
             if lens < self.max_road_len and lens >= self.min_road_len:
-                finalLs.append([title]+traces)
+                finalLs.append([title] + traces)
             else:
-                cutnum = lens/self.max_road_len
+                cutnum = lens / self.max_road_len
                 int_cutnum = int(cutnum)
-                lstnum = lens - int_cutnum*self.max_road_len
+                lstnum = lens - int_cutnum * self.max_road_len
                 if lens % self.max_road_len != 0:
                     int_cutnum += 1
                 else:
@@ -243,16 +244,16 @@ class DataProcess():
                     int_cutnum -= 1
 
                 for i in range(int_cutnum - 1):
-                    tmp_ls = [title] + traces[i*self.max_road_len:(i+1) * self.max_road_len]
+                    tmp_ls = [title] + traces[i * self.max_road_len:(i + 1) * self.max_road_len]
                     finalLs.append(tmp_ls)
 
-                assert(lens - (int_cutnum-1)*self.max_road_len < self.max_road_len + self.min_road_len)
-                latLS = [title] + traces[(int_cutnum-1) * self.max_road_len:]
+                assert (lens - (int_cutnum - 1) * self.max_road_len < self.max_road_len + self.min_road_len)
+                latLS = [title] + traces[(int_cutnum - 1) * self.max_road_len:]
 
                 finalLs.append(latLS)
 
         for i in finalLs:
-            assert(len(i) >= 16 and len(i) <= 40)
+            assert (len(i) >= 16 and len(i) <= 40)
         return finalLs
 
     def splitData(self, output_dir, train_rate=0.7, test_rate=0.3):
@@ -267,7 +268,7 @@ class DataProcess():
         create_dir(test_data_dir)
         num_sample = len(self.traces_ls)
         train_size, test_size = int(num_sample * train_rate), int(num_sample *
-                                                                 test_rate)
+                                                                  test_rate)
         idxs = list(range(num_sample))
         random.shuffle(idxs)
         train_idxs = idxs[:train_size]
@@ -277,10 +278,12 @@ class DataProcess():
         test_trace = []
         for i in range(num_sample):
             if i in train_idxs:
-                trainset.extend([self.traces_ls[i], self.time_stamp[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
+                trainset.extend([self.traces_ls[i], self.time_stamp[i], self.roads_ls[i], self.candidates[i],
+                                 self.candidates_id[i]])
                 train_trace += [self.finalLs[i]]
             else:
-                testset.extend([self.traces_ls[i], self.time_stamp[i], self.roads_ls[i], self.candidates[i], self.candidates_id[i]])
+                testset.extend([self.traces_ls[i], self.time_stamp[i], self.roads_ls[i], self.candidates[i],
+                                self.candidates_id[i]])
                 test_trace += [self.finalLs[i]]
 
         with open(os.path.join(train_data_dir, "train.json"), 'w') as fp:
@@ -300,11 +303,8 @@ class DataProcess():
                         f.write(trace)
 
 
-
-
 if __name__ == "__main__":
     downsample_rate = sys.argv[1]
     path = '../data/'
     data_path = path + 'data' + downsample_rate + '_dis' + '/'
-    DataProcess(traj_input_path=path+'trace.txt', output_dir=data_path, sample_rate=float(downsample_rate))
-    pass
+    DataProcess(traj_input_path=path + 'trace.txt', output_dir=data_path, sample_rate=float(downsample_rate))

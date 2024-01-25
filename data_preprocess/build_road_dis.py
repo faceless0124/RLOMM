@@ -25,7 +25,7 @@ def haversine(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float
     return R * c
 
 
-def read_road(path: str) -> Dict[int, Tuple[float, float]]:
+def get_road_mid(path: str) -> Dict[int, Tuple[float, float]]:
     """
     Read road.txt and return a dictionary with link_id as key and
     the midpoint of the corresponding road segment as value.
@@ -70,6 +70,11 @@ def calculate_distances(road_dict: Dict[int, Tuple[float, float]]) -> Dict[Tuple
         link_id2 = link_ids[j]
         distance_dict[(8533, link_id2)] = 100
 
-    with open("real_distances.pkl", 'wb') as file:
-        pickle.dump(distance_dict, file)
+    return distance_dict
 
+
+if __name__ == '__main__':
+    data_path = '../data/'
+    road_dict = get_road_mid(data_path + "road.txt")
+    dis_dict = calculate_distances(road_dict)
+    pickle.dump(dis_dict, open(data_path + 'real_distances.pkl', 'wb'))
