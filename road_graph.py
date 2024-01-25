@@ -31,7 +31,6 @@ class RoadGraph():
         A = torch.load(road_pt_path + 'A.pt')
         # A_list [n, n]
         self.A_list = self.get_adj_poly(A, layer, gamma)
-
         # 读取预计算的连通性距离和真实距离
         # connectivity_distances_file = root_path + 'connectivity_distances.pkl'
         # real_distances_file = root_path + 'real_distances.pkl'

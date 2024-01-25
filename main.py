@@ -15,7 +15,7 @@ from copy import deepcopy
 
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from model.dqn import DQNAgent
+from model.mm_agent import MMAgent
 from data_loader import MyDataset, padding
 from road_graph import RoadGraph
 from trace_graph import TraceGraph
@@ -294,7 +294,7 @@ if __name__ == '__main__':
 
     print("loading dataset finished!")
 
-    agent = DQNAgent(correct_reward, mask_reward)
+    agent = MMAgent(correct_reward, mask_reward)
     agent.to(device)
     optimizer = optim.Adam(agent.parameters(), lr=learning_rate)
     print(agent)
