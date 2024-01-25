@@ -27,10 +27,6 @@ class RoadGraph():
                                      sparse_sizes=(self.num_roads,
                                                    self.num_roads)).to(device)
         self.road_x = torch.load(road_pt_path + 'x.pt').float().to(device)
-        # gain A^k
-        A = torch.load(road_pt_path + 'A.pt')
-        # A_list [n, n]
-        self.A_list = self.get_adj_poly(A, layer, gamma)
         # 读取预计算的连通性距离和真实距离
         # connectivity_distances_file = root_path + 'connectivity_distances.pkl'
         # real_distances_file = root_path + 'real_distances.pkl'
@@ -41,35 +37,6 @@ class RoadGraph():
 
         self.connectivity_distances = None
         self.real_distances = None
-
-    def get_adj_poly(self, A, layer, gamma):
-        A_ = A.to(self.device)
-        ans = A_.clone()
-        for _ in range(layer - 1):
-            ans = ans @ A_
-        ans[ans != 0] = 1.
-        ans[ans == 0] = -gamma
-        return ans
-
-    def find_min_transfers(self, road_id1, road_id2):
-        if road_id1 == road_id2:
-            return 0
-
-        queue = deque([road_id1])
-        visited = set([road_id1])
-        distance = {road_id1: 0}
-
-        while queue:
-            current_id = queue.popleft()
-            for neighbor_id in self.neighbors[current_id]:
-                if neighbor_id not in visited:
-                    queue.append(neighbor_id)
-                    visited.add(neighbor_id)
-                    distance[neighbor_id] = distance[current_id] + 1
-                    if neighbor_id == road_id2:
-                        return distance[neighbor_id]
-
-        return -1
 
     def precompute_distances(self):
         # 将邻接矩阵转换为 COO 格式并存储
