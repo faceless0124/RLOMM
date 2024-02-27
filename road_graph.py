@@ -27,15 +27,16 @@ class RoadGraph():
                                      sparse_sizes=(self.num_roads,
                                                    self.num_roads)).to(device)
         self.road_x = torch.load(road_pt_path + 'x.pt').float().to(device)
+
         # 读取预计算的连通性距离和真实距离
-        # connectivity_distances_file = root_path + 'connectivity_distances.pkl'
+        connectivity_distances_file = root_path + 'connectivity_distances.pkl'
+        with open(connectivity_distances_file, 'rb') as f:
+            self.connectivity_distances = pickle.load(f)
         # real_distances_file = root_path + 'real_distances.pkl'
-        # with open(connectivity_distances_file, 'rb') as f:
-        #     self.connectivity_distances = pickle.load(f)
         # with open(real_distances_file, 'rb') as f:
         #     self.real_distances = pickle.load(f)
 
-        self.connectivity_distances = None
+        # self.connectivity_distances = None
         self.real_distances = None
 
     def precompute_distances(self):
