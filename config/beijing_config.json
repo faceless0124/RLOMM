@@ -4,7 +4,7 @@
     "learning_rate": 1e-3,
 
     "train_batch_size": 512,
-    "test_batch_size": 3000,
+    "test_batch_size": 512,
     "train_size": 7000,
     "test_size": 3000,
     "optimize_batch_size": 32,
@@ -14,7 +14,10 @@
     "downsample_rate": 1,
     "match_interval": 4,
 
-    "correct_reward": 1,
-    "mask_reward": 0
+    "correct_reward": 0.5,
+    "mask_reward": 0,
+    "continuous_success_reward": 0.01,
+    "connectivity_reward": 0.02,
+    "detour_penalty": 0.05
 }
 
