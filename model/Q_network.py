@@ -1,29 +1,35 @@
 from model.road_gin import RoadGIN
 from model.trace_gcn import TraceGCN
+from model.timestamp_tcn import TemporalConvNet
 import torch
 import torch.nn as nn
+import time
 
 class QNetwork(nn.Module):
     def __init__(self, road_emb_dim=128, traces_emb_dim=128, candidate_d_model=128, num_layers=3):
         super(QNetwork, self).__init__()
         self.emb_dim = traces_emb_dim
-        self.traces_linear = nn.Linear(2 * self.emb_dim, self.emb_dim).cuda()
+        # self.traces_linear = nn.Linear(2 * self.emb_dim, self.emb_dim).cuda()
+        self.num_outputs = 0
+        # self.timestamp_linear = nn.Linear(4, self.num_outputs)
+        # self.tcn = TemporalConvNet(num_inputs=3, num_outputs=self.num_outputs)  # Adjust num_inputs to 6 for the 6-dimensional time features
+        self.fc = nn.Linear(2 * self.emb_dim + self.num_outputs, self.emb_dim)  # Final linear layer to combine features
         # RNN for Traces
         self.rnn_traces = nn.RNN(input_size=traces_emb_dim, hidden_size=traces_emb_dim, num_layers=num_layers,
-                                 batch_first=True).cuda()
+                                 batch_first=True)
 
-        self.road_feat_fc = nn.Linear(28, road_emb_dim).cuda()  # 3*8 + 4
-        self.trace_feat_fc = nn.Linear(4, traces_emb_dim).cuda()
+        self.road_feat_fc = nn.Linear(28, road_emb_dim)  # 3*8 + 4
+        self.trace_feat_fc = nn.Linear(4, traces_emb_dim)
 
         self.road_gin = RoadGIN(road_emb_dim)
         self.trace_gcn = TraceGCN(traces_emb_dim)
 
         # RNN for Road Segments
         self.rnn_segments = nn.RNN(input_size=road_emb_dim, hidden_size=road_emb_dim, num_layers=num_layers,
-                                   batch_first=True).cuda()
+                                   batch_first=True)
 
-        self.trace_weight = nn.Linear(traces_emb_dim, traces_emb_dim//2).cuda()
-        self.segment_weight = nn.Linear(road_emb_dim, road_emb_dim//2).cuda()
+        self.trace_weight = nn.Linear(traces_emb_dim, traces_emb_dim//2)
+        self.segment_weight = nn.Linear(road_emb_dim, road_emb_dim//2)
 
         # attention
         self.attention = Attention(traces_emb_dim, candidate_d_model, traces_emb_dim)
@@ -46,9 +52,17 @@ class QNetwork(nn.Module):
                                               trace_graph.trace_in_edge_index,
                                               trace_graph.trace_out_edge_index,
                                               trace_graph.trace_weight)
+        trace_id = traces[:, :, 0].to(torch.long)
+        # timestamp = traces[:, :, 1:]
+        # timestamp_emb = self.timestamp_linear(timestamp)
+        # timestamp_emb = torch.relu(timestamp_emb)
         # 提取对应路段编码
-        traces_emb = full_grid_emb[traces]
-        traces_emb = self.traces_linear(traces_emb)
+        full_grid_emb = self.fc(full_grid_emb)
+        traces_emb = full_grid_emb[trace_id]
+
+        # timestamp = timestamp.permute(0, 2, 1)  # Change to (batch_size, 6, seq_len) to match Conv1d input
+        # timestamp_emb = self.tcn(timestamp).permute(0, 2, 1)
+        # traces_emb = torch.cat((traces_emb, timestamp_emb), dim=-1)
         # 应用RNN模型
         traces_output, traces_hidden = self.rnn_traces(traces_emb, traces_encoding)
         segments_output, segments_hidden = self.rnn_segments(segments_emb, matched_road_segments_encoding)
@@ -58,7 +72,7 @@ class QNetwork(nn.Module):
         # 应用注意力机制
         action_values = self.attention(traces_encoded, segments_encoded, candidates_emb)
         # 返回动作值和最终隐藏状态
-        return traces_hidden, segments_hidden, action_values
+        return traces_hidden, segments_hidden, action_values, road_emb, full_grid_emb
 
 
 class Attention(nn.Module):
