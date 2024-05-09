@@ -20,7 +20,7 @@ class GCNLayer(nn.Module):
 
 
 class DiGCN(nn.Module):
-    def __init__(self, embed_dim, depth=2):
+    def __init__(self, embed_dim, depth=3):
         super(DiGCN, self).__init__()
         self.convs = nn.ModuleList()
         self.bns = nn.ModuleList()
