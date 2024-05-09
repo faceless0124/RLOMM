@@ -11,8 +11,9 @@ from tqdm import tqdm
 
 from utils import create_dir, get_border
 
-MIN_LAT, MIN_LNG, MAX_LAT, MAX_LNG = get_border('../data/road.txt')
-GRID_SIZE = 50
+downsample_rate = sys.argv[1]
+city = sys.argv[2]
+MIN_LAT, MIN_LNG, MAX_LAT, MAX_LNG = get_border('../data/' + city + '_road.txt')
 
 
 def randomDownSampleBySize(sampleData: list, sampleRate: float) -> (list, list, list):
@@ -46,7 +47,7 @@ class DataProcess():
         self.min_road_len = min_road_len
         beginLs = self.readTrajFile(traj_input_path)
         self.finalLs = self.cutData(beginLs)
-        self.traces_ls, self.roads_ls, self.candidates, self.candidates_id, self.time_stamp, self.downsampleIdx, downSampleData = self.sampling()
+        self.traces_ls, self.tgt_roads_ls, self.candidates_id, self.time_stamp, self.downsampleIdx, downSampleData = self.sampling()
         self.splitData(output_dir)
         with open(self.output_dir + 'data_split/downsample_trace.txt', 'w') as f:
             for traces in downSampleData:
@@ -55,7 +56,7 @@ class DataProcess():
 
     def readTrajFile(self, filePath):
         """
-            read trace.txt
+            read beijing_trace.txt
         """
         with open(filePath, 'r') as f:
             traj_list = f.readlines()
@@ -69,6 +70,7 @@ class DataProcess():
             else:  # 增加轨迹点
                 tempLs.append(sen)
         finalLs.append(tempLs)
+        print("begin traces cnt:", len(finalLs))
         return finalLs
 
     def closest_point_on_line(self, x, y, a):
@@ -129,7 +131,11 @@ class DataProcess():
         """
         # 最大堆用于存储最近的10个路段及其距离
         closest_candidates = []
-        for candidate_id in range(8533):
+        if city == 'beijing':
+            link_cnt = 8533
+        else:
+            link_cnt = 4254
+        for candidate_id in range(link_cnt):
             distance = road_distance_data.get((target_link_id, candidate_id))
             if distance is not None:
                 # 如果堆中少于10个元素，直接添加
@@ -141,9 +147,11 @@ class DataProcess():
 
         # 从堆中提取候选点和距离，注意我们需要对距离取反
         candidate_ids = [item[1] for item in closest_candidates]
-        candidate_distances = [-item[0] for item in closest_candidates]
+        # candidate_distances = [-item[0] for item in closest_candidates]
+        # print(candidate_distances)
 
-        return candidate_ids, candidate_distances
+
+        return candidate_ids
 
     # def get_road_candidates(self, path: str, target_link_id: int, a: (float, float)) -> (list, list):
     #     """
@@ -191,13 +199,13 @@ class DataProcess():
         """
             down sampling
         """
-        path = '../data/real_distances.pkl'
+        path = '../data/' + city + '/real_distances.pkl'
         downsampleData, pureData, downsampleIdx = randomDownSampleBySize(self.finalLs, self.sample_rate)
-        traces_ls, roads_ls, candidates_ls, candidates_id_ls, time_stamp_ls = [], [], [], [], []
+        traces_ls, tgt_roads_ls, candidates_id_ls, time_stamp_ls =  [], [], [], []
         with open(path, 'rb') as file:
             road_distance_data = pickle.load(file)
             for downdata in tqdm(downsampleData):
-                traces, roads, candidates, candidates_ids, time_stamp = [], [], [], [], []
+                traces, roads, candidates_ids, time_stamp = [], [], [], []
                 for i in downdata:
                     if i[0] == '#':
                         continue
@@ -206,17 +214,15 @@ class DataProcess():
                     lat, lng = float(il[1]), float(il[2])
                     # a = (lng, lat)
                     traces.append((lat, lng))
-                    candidates_id, candidates_dis = self.get_road_candidates(int(i.split(',')[3]), road_distance_data)
-                    candidates.append(candidates_dis)
+                    candidates_id = self.get_road_candidates(int(i.split(',')[3]), road_distance_data)
                     candidates_ids.append(candidates_id)
-                    roads.append(int(i.split(',')[3]))
+                    roads.append(candidates_id.index(int(i.split(',')[3])))
 
                 traces_ls.append(traces)
-                roads_ls.append(roads)
-                candidates_ls.append(candidates)
+                tgt_roads_ls.append(roads)
                 candidates_id_ls.append(candidates_ids)
                 time_stamp_ls.append(time_stamp)
-        return traces_ls, roads_ls, candidates_ls, candidates_id_ls, time_stamp_ls, downsampleIdx, downsampleData
+        return traces_ls, tgt_roads_ls, candidates_id_ls, time_stamp_ls, downsampleIdx, downsampleData
 
     def cutData(self, beginLs):
         """
@@ -254,9 +260,10 @@ class DataProcess():
 
         for i in finalLs:
             assert (len(i) >= 16 and len(i) <= 40)
+        print("traces cnt:", len(finalLs))
         return finalLs
 
-    def splitData(self, output_dir, train_rate=0.7, test_rate=0.3):
+    def splitData(self, output_dir, train_rate=0.7, val_rate=0.2):
         """
             split original data to train, valid and test datasets
         """
@@ -264,37 +271,54 @@ class DataProcess():
         create_dir(output_dir + 'data_split/')
         train_data_dir = output_dir + 'train_data/'
         create_dir(train_data_dir)
+        val_data_dir = output_dir + 'val_data/'
+        create_dir(val_data_dir)
         test_data_dir = output_dir + 'test_data/'
         create_dir(test_data_dir)
         num_sample = len(self.traces_ls)
-        train_size, test_size = int(num_sample * train_rate), int(num_sample *
-                                                                  test_rate)
+        train_size, val_size = int(num_sample * train_rate), int(num_sample * val_rate)
         idxs = list(range(num_sample))
         random.shuffle(idxs)
         train_idxs = idxs[:train_size]
-        trainset, testset = [], []
+        val_idxs = idxs[train_size:train_size + val_size]
+        trainset, valset, testset = [], [], []
 
         train_trace = []
+        val_trace = []
         test_trace = []
         for i in range(num_sample):
             if i in train_idxs:
-                trainset.extend([self.traces_ls[i], self.time_stamp[i], self.roads_ls[i], self.candidates[i],
-                                 self.candidates_id[i]])
+                trainset.extend([self.traces_ls[i], self.time_stamp[i], self.tgt_roads_ls[i], self.candidates_id[i]])
                 train_trace += [self.finalLs[i]]
+            elif i in val_idxs:
+                valset.extend([self.traces_ls[i], self.time_stamp[i], self.tgt_roads_ls[i], self.candidates_id[i]])
+                val_trace += [self.finalLs[i]]
             else:
-                testset.extend([self.traces_ls[i], self.time_stamp[i], self.roads_ls[i], self.candidates[i],
-                                self.candidates_id[i]])
+                testset.extend([self.traces_ls[i], self.time_stamp[i], self.tgt_roads_ls[i], self.candidates_id[i]])
                 test_trace += [self.finalLs[i]]
 
         with open(os.path.join(train_data_dir, "train.json"), 'w') as fp:
             json.dump(trainset, fp)
 
+        with open(os.path.join(val_data_dir, "val.json"), 'w') as fp:
+            json.dump(valset, fp)
+
         with open(os.path.join(test_data_dir, "test.json"), 'w') as fp:
             json.dump(testset, fp)
 
-        all_trace = [train_trace, test_trace]
-        all_trace_name = ['train_trace.txt', 'test_trace.txt']
-        for i in range(2):
+        # all_trace = [train_trace, test_trace]
+        # all_trace_name = ['train_trace.txt', 'test_trace.txt']
+        # for i in range(2):
+        #     tmptrace = all_trace[i]
+        #     path = output_dir + 'data_split/' + all_trace_name[i]
+        #     with open(path, 'w') as f:
+        #         for traces in tmptrace:
+        #             for trace in traces:
+        #                 f.write(trace)
+
+        all_trace = [train_trace, val_trace, test_trace]
+        all_trace_name = ['train_trace.txt', 'val_trace.txt', 'test_trace.txt']
+        for i in range(3):
             tmptrace = all_trace[i]
             path = output_dir + 'data_split/' + all_trace_name[i]
             with open(path, 'w') as f:
@@ -304,7 +328,6 @@ class DataProcess():
 
 
 if __name__ == "__main__":
-    downsample_rate = sys.argv[1]
-    path = '../data/'
+    path = '../data/' + city + '/'
     data_path = path + 'data' + downsample_rate + '_dis' + '/'
-    DataProcess(traj_input_path=path + 'trace.txt', output_dir=data_path, sample_rate=float(downsample_rate))
+    DataProcess(traj_input_path=path + city + '_trace.txt', output_dir=data_path, sample_rate=float(downsample_rate))
