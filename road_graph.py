@@ -12,6 +12,7 @@ from tqdm import tqdm
 class RoadGraph():
     def __init__(self, root_path, layer, gamma, device) -> None:
         self.device = device
+        self.root_path = root_path
         # load road graph
         if not root_path.endswith('/'):
             root_path += '/'
@@ -67,7 +68,7 @@ class RoadGraph():
                     distances[(road_id1, road_id2)] = distance.get(road_id2, -1)
 
         # 持久化存储距离数据
-        with open('connectivity_distances.pkl', 'wb') as f:
+        with open(self.root_path + '/connectivity_distances.pkl', 'wb') as f:
             pickle.dump(distances, f)
 
         return distances
@@ -75,7 +76,7 @@ class RoadGraph():
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    road_graph = RoadGraph(root_path='./data',
+    road_graph = RoadGraph(root_path='./data/beijing',
                            layer=4,
                            gamma=10000,
                            device=device)
