@@ -3,11 +3,13 @@ import torch
 import pickle
 import sys
 from utils import create_dir
+
 """
     build dict for road and traceid and select singleton grid
 """
 downsample_rate = sys.argv[1]
-path = '../data/'
+city = sys.argv[2]
+path = '../data/'+city+'/'
 data_path = path + 'data' + downsample_rate + '_dis/'
 pkl_path = data_path + 'used_pkl/'
 create_dir(pkl_path)
