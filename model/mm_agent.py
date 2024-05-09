@@ -69,7 +69,8 @@ class MMAgent(nn.Module):
                     self.short_term_history[i][1] = self.short_term_history[i][0]  # 将上一次的结果移至第二位
                     self.short_term_history[i][0] = selected_candidate_id  # 将最新的结果放在第一位
                     # 根据选中的路段与目标路段是否相同给予奖励
-                    if selected_candidate_id == tgt_roads[i, j].item():
+                    # if selected_candidate_id == tgt_roads[i, j].item():
+                    if action[i, j] == tgt_roads[i, j].item():
                         reward = self.correct_reward
                         self.continuous_successes[i] += 1  # 增加连续成功次数
                         # # 检查是否达到连续成功的阈值
