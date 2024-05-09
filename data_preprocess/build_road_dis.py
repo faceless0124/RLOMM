@@ -2,8 +2,8 @@ import re
 from typing import Dict, Tuple
 from math import radians, cos, sin, sqrt, atan2
 import pickle
+import sys
 from tqdm import tqdm
-
 
 def haversine(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """
@@ -27,7 +27,7 @@ def haversine(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float
 
 def get_road_mid(path: str) -> Dict[int, Tuple[float, float]]:
     """
-    Read road.txt and return a dictionary with link_id as key and
+    Read beijing_road.txt and return a dictionary with link_id as key and
     the midpoint of the corresponding road segment as value.
     """
     cr = re.compile(r"(\d*)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\|(.*)")
@@ -49,15 +49,19 @@ def get_road_mid(path: str) -> Dict[int, Tuple[float, float]]:
     return road_dict
 
 
-# Example usage (assuming the file 'road.txt' exists)
-# road_dict = read_road("road.txt")
+# Example usage (assuming the file 'beijing_road.txt' exists)
+# road_dict = read_road("beijing_road.txt")
 
-def calculate_distances(road_dict: Dict[int, Tuple[float, float]]) -> Dict[Tuple[int, int], float]:
+def calculate_distances(road_dict: Dict[int, Tuple[float, float]], city: str) -> Dict[Tuple[int, int], float]:
     """
     Calculate the distances between midpoints of road segments for each pair of link_ids.
     """
     distance_dict = {}
     link_ids = list(road_dict.keys())
+    if city == 'beijing':
+        link_cnt = 8533
+    else:
+        link_cnt = 4254
 
     for i in tqdm(range(len(link_ids))):
         for j in range(len(link_ids)):
@@ -68,13 +72,14 @@ def calculate_distances(road_dict: Dict[int, Tuple[float, float]]) -> Dict[Tuple
 
     for j in range(len(link_ids)):
         link_id2 = link_ids[j]
-        distance_dict[(8533, link_id2)] = 100
+        distance_dict[(link_cnt, link_id2)] = 100
 
     return distance_dict
 
 
 if __name__ == '__main__':
-    data_path = '../data/'
-    road_dict = get_road_mid(data_path + "road.txt")
-    dis_dict = calculate_distances(road_dict)
+    city = sys.argv[1]
+    data_path = '../data/' + city + '/'
+    road_dict = get_road_mid('../data/' + city + "_road.txt")
+    dis_dict = calculate_distances(road_dict, city)
     pickle.dump(dis_dict, open(data_path + 'real_distances.pkl', 'wb'))
