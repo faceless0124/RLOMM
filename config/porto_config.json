@@ -1,0 +1,22 @@
+{
+    "city": "porto",
+    "seed": 12418,
+    "training_episode": 300,
+    "learning_rate": 1e-3,
+
+    "train_batch_size": 512,
+    "test_batch_size": 500,
+    "optimize_batch_size": 32,
+
+    "gamma":0.8,
+    "target_update_interval": 4,
+    "downsample_rate": 0.5,
+    "match_interval": 4,
+
+    "correct_reward": 0.5,
+    "mask_reward": 0,
+    "continuous_success_reward": 0.01,
+    "connectivity_reward": 0.02,
+    "detour_penalty": 0.05
+}
+
