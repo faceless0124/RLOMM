@@ -1,6 +1,6 @@
-# RLMM
+# RLOMM
 
-Map matching with reinforcement learning
+Online map matching with reinforcement learning
 
 ## Usage
 ```bash
