@@ -39,9 +39,6 @@ class QNetwork(nn.Module):
         segments_emb = road_emb[matched_road_segments_id.squeeze(-1)]
         candidates_emb = road_emb[candidates.squeeze(-1)]
 
-        traces = traces.permute(1, 0, 2)  # 调整维度顺序为 seq_len, batch_size, feature_size
-        segments_emb = segments_emb.permute(1, 0, 2)  # 调整维度顺序为 seq_len, batch_size, feature_size
-
         traces = self.trace_feat_fc(traces)
 
         # 应用位置编码和变换器编码器
@@ -52,9 +49,9 @@ class QNetwork(nn.Module):
         segments_emb = segments_emb + pe_segments.unsqueeze(0)
 
         # 对批处理数据应用变换器编码器
-        traces_encoded = self.transformer_encoder_traces(traces).permute(1, 0, 2)
+        traces_encoded = self.transformer_encoder_traces(traces)
         traces_encoded = traces_encoded[:, -1, :]  # 取最后一个元素
-        segments_encoded = self.transformer_encoder_segments(segments_emb).permute(1, 0, 2)
+        segments_encoded = self.transformer_encoder_segments(segments_emb)
         segments_encoded = segments_encoded.mean(dim=1)  # 对每个序列取平均
 
         # 如果candidates包含变长序列，您可能需要进行相应的处理
@@ -65,7 +62,11 @@ class QNetwork(nn.Module):
         action_values = self.attention(traces_encoded, segments_encoded, candidates_emb)
 
         return action_values
-
+        # output_tensor = torch.zeros(candidates.size(0), candidates.size(1)).to(candidates.device)
+        #
+        # # 将每个batch的第一个元素设置为1
+        # output_tensor[:, 0] = 1
+        # return output_tensor
 
     def positional_encoding(self, seq_len, d_model):
         """

@@ -2,15 +2,15 @@ import re
 import networkx as nx
 import torch
 import pickle
+import sys
 from utils import gps2grid, get_border, create_dir
 
-MIN_LAT, MIN_LNG, MAX_LAT, MAX_LNG = get_border('../data/road.txt')
-GRID_SIZE = 50
-
+city = sys.argv[1]
+MIN_LAT, MIN_LNG, MAX_LAT, MAX_LNG = get_border('../data/' + city + '_road.txt')
 
 def read_road(path: str) -> dict:
     """
-        read road.txt
+        read beijing_road.txt
     """
     link_nodes_dict = {}
     cr = re.compile(r"(\d*)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\|(.*)")
@@ -103,7 +103,9 @@ def build_x_edge_index(G):
 
     edge_index = [[], []]
     for i in G.edges():
-        assert (int(i[0]) != int(i[1]))
+        # assert (int(i[0]) != int(i[1]))
+        if int(i[0]) == int(i[1]):
+            print(i[0], i[1])
         edge_index[0].append(int(i[0]))
         edge_index[1].append(int(i[1]))
 
@@ -116,9 +118,9 @@ def build_x_edge_index(G):
 
 
 if __name__ == '__main__':
-    r = read_road('../data/road.txt')
+    r = read_road('../data/' + city + '_road.txt')
     g = construct_road_graph(r)
-    data_path = '../data/'
+    data_path = '../data/' + city + '/'
     x, edge_index, G = build_x_edge_index(g)
     pickle.dump(G, open(data_path + 'road_graph.pkl', 'wb'))
     create_dir(data_path + 'road_graph_pt')
