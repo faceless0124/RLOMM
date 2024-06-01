@@ -1,6 +1,6 @@
 cd data_preprocess
 
-city='porto'
+city='beijing'
 
 python build_road_graph.py $city
 echo 'finish build_road_graph'

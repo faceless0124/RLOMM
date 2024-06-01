@@ -21,22 +21,33 @@ class MyDataset(Dataset):
         else:
             self.link_cnt = 4254
 
-    def buildingDataset(self, data_path):
+    def buildingDataset(self, data_path, subset_ratio=0.8):
         grid2traceid_dict = pickle.load(open(self.map_path, 'rb'))
         self.traces_ls = []
 
         with open(data_path, "r") as fp:
             data = json.load(fp)
-            # self.traces_ls = data[0::5]
-            for gps_ls in data[0::4]:
+            total_data_points = len(data[0::4])
+            subset_size = int(total_data_points * subset_ratio)
+
+            # Adjust subset size to ensure it's within the range of available data
+            subset_size = min(subset_size, total_data_points)
+
+            # Select subset of data indices
+            subset_indices = range(0, total_data_points, total_data_points // subset_size)[:subset_size]
+
+            for idx in subset_indices:
+                gps_ls = data[0::4][idx]
                 traces = []
                 for gps in gps_ls:
                     gridx, gridy = utils.gps2grid(gps[0], gps[1], MIN_LAT=self.MIN_LAT, MIN_LNG=self.MIN_LNG)
                     traces.append(grid2traceid_dict[(gridx, gridy)] + 1)
                 self.traces_ls.append(traces)
-            self.time_stamps = data[1::4]
-            self.tgt_roads_ls = data[2::4]
-            self.candidates_id = data[3::4]
+
+            self.time_stamps = [data[1::4][idx] for idx in subset_indices]
+            self.tgt_roads_ls = [data[2::4][idx] for idx in subset_indices]
+            self.candidates_id = [data[3::4][idx] for idx in subset_indices]
+
         self.length = len(self.traces_ls)
 
         # 归一化轨迹和候选点数据
