@@ -1,6 +1,5 @@
 from model.road_gin import RoadGIN
 from model.trace_gcn import TraceGCN
-from model.timestamp_tcn import TemporalConvNet
 import torch
 import torch.nn as nn
 import time
