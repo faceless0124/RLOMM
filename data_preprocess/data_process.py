@@ -150,47 +150,6 @@ class DataProcess():
 
         return candidate_ids
 
-    # def get_road_candidates(self, path: str, target_link_id: int, a: (float, float)) -> (list, list):
-    #     """
-    #         find candidate points of point a.
-    #
-    #         Parameters:
-    #         - path: road info data path.
-    #         - target_link_id: the ground truth road id of point a, used to obtain neighbors.
-    #         - a: a point from trace.
-    #
-    #         Returns:
-    #         - candidate_points: candidate points of point a.
-    #     """
-    #     cr = re.compile(r"(\d*)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\t(.*?)\|(.*)")
-    #     neighbors_link_id = []
-    #     candidate_points = []
-    #     with open(path, 'r') as f:
-    #         for line in f.readlines():
-    #             data = cr.findall(line)
-    #             if len(data) != 0:
-    #                 link_id, s_node_id, e_node_id, link_dir, speed, vertex_count, points, neighbors = data[0]
-    #                 if target_link_id == int(link_id):
-    #                     neighbors = list(map(lambda x: x.split(','), neighbors.split(';')))
-    #                     # 添加邻居的 link_id
-    #                     for i in neighbors:
-    #                         if i == None or (len(i) == 1 and i[0] == ''):
-    #                             continue
-    #                         neighbors_link_id.append(int(i[0]))
-    #                     # 在添加邻居之后，随机插入 link_id
-    #                     random_index = random.randint(0, len(neighbors_link_id))  # 生成一个随机索引
-    #                     neighbors_link_id.insert(random_index, int(link_id))
-    #         for neighbor_id in neighbors_link_id:
-    #             f.seek(0)
-    #             for line in f.readlines():
-    #                 data = cr.findall(line)
-    #                 if len(data) != 0:
-    #                     link_id, s_node_id, e_node_id, link_dir, speed, vertex_count, points, neighbors = data[0]
-    #                     if neighbor_id == int(link_id):
-    #                         points = list(map(lambda x: x.split(' '), points.split(',')))
-    #                         points = list(map(lambda x: (float(x[0]), float(x[1])), points))
-    #                         candidate_points.append(self.closest_point_on_line(points[0], points[1], a))
-    #     return candidate_points, neighbors_link_id
 
     def sampling(self):
         """
