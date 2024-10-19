@@ -23,13 +23,13 @@ def randomDownSampleBySize(sampleData: list, sampleRate: float) -> (list, list, 
     resData, pureData, resIdx = [], [], []
     for i in range(len(sampleData)):
         trajList = sampleData[i]
-        tempRes = [trajList[0], trajList[1]]  # 首节点
+        tempRes = [trajList[0], trajList[1]]
         tmpIdx = [0]
         for j in range(2, len(trajList) - 1):
             if (random.random() <= sampleRate):
                 tempRes.append(trajList[j])
                 tmpIdx.append(j - 1)
-        tempRes.append(trajList[-1])  # 尾节点
+        tempRes.append(trajList[-1])
         tmpIdx.append(len(trajList) - 2)
         resData.append(tempRes)
         pureData.append(trajList)
@@ -60,14 +60,14 @@ class DataProcess():
         """
         with open(filePath, 'r') as f:
             traj_list = f.readlines()
-        finalLs = list()  # 用来保存所有轨迹
-        tempLs = list()  # 用来保存单个轨迹
+        finalLs = list()
+        tempLs = list()
         for idx, sen in enumerate(traj_list):
-            if sen[0] == '#':  # 表明是一条轨迹的开头
+            if sen[0] == '#':
                 if idx != 0:
                     finalLs.append(tempLs)
                 tempLs = [sen]
-            else:  # 增加轨迹点
+            else:
                 tempLs.append(sen)
         finalLs.append(tempLs)
         print("begin traces cnt:", len(finalLs))
@@ -129,7 +129,7 @@ class DataProcess():
         - candidate_ids: IDs of the 10 closest road segments to target_link_id.
         - candidate_distances: distances of these road segments from target_link_id.
         """
-        # 最大堆用于存储最近的10个路段及其距离
+    
         closest_candidates = []
         if city == 'beijing':
             link_cnt = 8533
@@ -138,14 +138,11 @@ class DataProcess():
         for candidate_id in range(link_cnt):
             distance = road_distance_data.get((target_link_id, candidate_id))
             if distance is not None:
-                # 如果堆中少于10个元素，直接添加
                 if len(closest_candidates) < 10:
                     heapq.heappush(closest_candidates, (-distance, candidate_id))
-                # 否则，只有当找到更近的路段时才添加
                 elif distance < -closest_candidates[0][0]:
                     heapq.heappushpop(closest_candidates, (-distance, candidate_id))
 
-        # 从堆中提取候选点和距离，注意我们需要对距离取反
         candidate_ids = [item[1] for item in closest_candidates]
         # candidate_distances = [-item[0] for item in closest_candidates]
         # print(candidate_distances)

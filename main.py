@@ -71,25 +71,20 @@ def loadConfig(config):
 def contrastive_loss(features, positive_samples, negative_samples, temperature=0.5, eps=1e-8):
     batch_size, match_interval, feature_dim = features.shape
 
-    # 重塑特征以计算相似度
     features = features.view(batch_size * match_interval, 1, feature_dim)
     positive_samples = positive_samples.view(batch_size * match_interval, feature_dim)
     negative_samples = negative_samples.view(batch_size * match_interval, -1, feature_dim)
 
-    # 计算相似度
     positive_similarity = torch.sum(features * positive_samples.unsqueeze(1), dim=-1) / temperature
     negative_similarity = torch.bmm(negative_samples, features.transpose(1, 2)) / temperature
 
-    # 应用数值稳定技巧：减去最大相似度
     max_similarity = torch.max(positive_similarity, torch.max(negative_similarity, dim=1).values)
     positive_similarity = positive_similarity - max_similarity
     negative_similarity = negative_similarity - max_similarity.unsqueeze(1)
 
-    # 计算指数并防止溢出
     positive_similarity_exp = torch.exp(positive_similarity)
     negative_similarity_exp = torch.exp(negative_similarity).sum(dim=1)
 
-    # 计算InfoNCE损失，确保分子远离零
     loss = -torch.log((positive_similarity_exp + eps) / (positive_similarity_exp + negative_similarity_exp + eps))
 
     return loss.mean()
@@ -119,7 +114,7 @@ def train_agent(train_env, valid_env, eval_env, agent, optimizer, road_graph, tr
             if done:
                 break
 
-            agent.reset_continuous_successes(data[0].size(0))  # 假设data[0]是traces，其第一维是批次大小
+            agent.reset_continuous_successes(data[0].size(0))
 
             traces, tgt_roads, candidates_id, trace_lens = data
             traces, tgt_roads, candidates_id = traces.to(device), tgt_roads.to(device), candidates_id.to(device)
@@ -127,7 +122,6 @@ def train_agent(train_env, valid_env, eval_env, agent, optimizer, road_graph, tr
 
             last_traces_encoding = None
             last_matched_road_segments_encoding = None
-            # 从每条轨迹的第match_interval个点开始，每隔match_interval个点进行一次匹配
             for point_idx in range(match_interval - 1, traces.size(1) - match_interval, match_interval):
                 # sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1, :]
                 sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1, :]
@@ -161,22 +155,13 @@ def train_agent(train_env, valid_env, eval_env, agent, optimizer, road_graph, tr
 
                 next_traces = traces[:, point_idx + 1:point_idx + 1 + match_interval, :]
                 next_candidates = candidates_id[:, point_idx + 1:point_idx + 1 + match_interval, :]
-                # agent.memory.push(
-                #     last_traces_encoding, last_matched_road_segments_encoding,
-                #     sub_traces, matched_road_segments_id, sub_candidates,
-                #     None, None,  # 当前状态的正负样本
-                #     traces_encoding, matched_road_segments_encoding,
-                #     next_traces, next_matched_road_segments_id, next_candidates,
-                #     None, None,  # 下一个状态的正负样本
-                #     action, reward
-                # )
                 agent.memory.push(
                     last_traces_encoding, last_matched_road_segments_encoding,
                     sub_traces, matched_road_segments_id, sub_candidates,
-                    current_positive_samples, current_negative_samples,  # 当前状态的正负样本
+                    current_positive_samples, current_negative_samples,
                     traces_encoding, matched_road_segments_encoding,
                     next_traces, next_matched_road_segments_id, next_candidates,
-                    None, None,  # 下一个状态的正负样本
+                    None, None,
                     action, reward
                 )
 
@@ -185,7 +170,7 @@ def train_agent(train_env, valid_env, eval_env, agent, optimizer, road_graph, tr
                 last_matched_road_segments_encoding = matched_road_segments_encoding
 
             start_time = time.time()
-            # 更新损失和奖励
+
             loss, rl_loss, ctr_loss = optimize_model(agent.memory, agent, optimizer, road_graph, trace_graph, gamma,
                                                      optimize_batch, match_interval, mask_reward, 0.1)
             end_time = time.time()
@@ -202,7 +187,7 @@ def train_agent(train_env, valid_env, eval_env, agent, optimizer, road_graph, tr
         print("training_time:", all_time)
         if update_steps == 0:
             continue
-        # 计算并打印每个episode的平均loss
+
         avg_loss = total_loss / update_steps
         avg_rl_loss = total_rl_loss / update_steps
         avg_ctr_loss = total_ctr_loss / update_steps
@@ -213,9 +198,9 @@ def train_agent(train_env, valid_env, eval_env, agent, optimizer, road_graph, tr
         if best_acc < acc:
             best_model = deepcopy(agent.state_dict())
             best_acc = acc
-            early_stop_counter = 0  # 重置计数器，因为找到了更好的模型
+            early_stop_counter = 0
         else:
-            early_stop_counter += 1  # 没有改进，增加计数器
+            early_stop_counter += 1
             print(f"Early stopping counter: {early_stop_counter}")
         if early_stop_counter >= early_stop_threshold:
             print(f"Early stopping triggered after {episode + 1} episodes.")
@@ -243,12 +228,10 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, trace_graph, gamma,
     ctr_loss_sum = 0.0
 
     for transition in transitions:
-        # 解压单条记录中的 state, next_state, action, reward
         state, action, next_state, reward = transition
         reward = reward.to(device)
         mask = (reward != mask_reward).float()
 
-        # 计算当前状态的 Q 值
         # traces_encoding, matched_road_segments_encoding, trace, matched_road_segments_id, candidate = state
         traces_encoding, matched_road_segments_encoding, trace, matched_road_segments_id, candidate, positive_samples, negative_samples = state
         _, _, q_values, road_emb, full_grid_emb = dqn_agent.main_net(traces_encoding, matched_road_segments_encoding,
@@ -260,15 +243,12 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, trace_graph, gamma,
             state_action_values = torch.cat(
                 (state_action_values, q_values[:, i, :].gather(-1, action[:, i].unsqueeze(1))), dim=1)
 
-        # Double DQN：分离动作选择和评估
-        # 使用主网络选择下一个状态的最佳动作
         next_traces_encoding, next_matched_road_segments_encoding, next_trace, next_matched_road_segments_id, next_candidate, _, _ = next_state
         _, _, q_values_next_main, _, _ = dqn_agent.main_net(next_traces_encoding, next_matched_road_segments_encoding,
                                                             next_trace, next_matched_road_segments_id, next_candidate,
                                                             road_graph, trace_graph)
         max_next_action = q_values_next_main.max(-1)[1]  # (batch_size, match_interval)
 
-        # 使用目标网络评估选择的动作的 Q 值
         _, _, q_values_next_target, _, _ = dqn_agent.target_net(next_traces_encoding,
                                                                 next_matched_road_segments_encoding,
                                                                 next_trace, next_matched_road_segments_id,
@@ -282,10 +262,8 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, trace_graph, gamma,
                                                                                                    i].unsqueeze(
                                                                                                        1)).detach()),
                                           dim=1)
-        # 计算期望 Q 值
         expected_state_action_values = (next_state_values * gamma) + reward
 
-        # 计算强化学习损失
         rl_loss = nn.SmoothL1Loss()(state_action_values * mask, expected_state_action_values * mask)
 
         # postive_samples (batch_size, match_interval)
@@ -296,7 +274,6 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, trace_graph, gamma,
         positive_features = road_emb[positive_samples]
         negative_features = road_emb[negative_samples]
 
-        # 计算对比学习损失
         ctr_loss = contrastive_loss(features * mask.unsqueeze(-1), positive_features * mask.unsqueeze(-1),
                                     negative_features * mask.unsqueeze(-1).unsqueeze(-1))
 
@@ -309,7 +286,6 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, trace_graph, gamma,
         rl_loss_sum += rl_loss.item()
         ctr_loss_sum += lambda_ctr * ctr_loss.item()
 
-        # 优化模型
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -320,23 +296,17 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, trace_graph, gamma,
     return avg_loss, avg_rl_loss, avg_ctr_loss
 
 def get_positive_negative_samples(roads_slice, candidates_slice):
-    batch_size, seq_len, _ = candidates_slice.shape  # 获取维度信息
-    # 获取正样本：直接根据roads_slice中的索引从candidates_slice中提取
+    batch_size, seq_len, _ = candidates_slice.shape
     positive_samples = torch.gather(candidates_slice, 2, roads_slice.unsqueeze(-1)).squeeze(-1)
-    # 初始化一个tensor，用于存放负样本的索引
     all_indices = torch.arange(candidates_slice.shape[2], device=candidates_slice.device).expand(batch_size, seq_len, -1)
-    # 创建一个mask，其中正样本的位置为False，其余为True
     mask = all_indices != roads_slice.unsqueeze(-1)
-    # 应用mask，选择负样本
     negative_samples = torch.masked_select(candidates_slice, mask).view(batch_size, seq_len, -1)
     return positive_samples, negative_samples
 
 
 def longest_common_subsequence(seq1, seq2):
-    # 创建一个二维数组，用于存储两个序列的LCS长度
     lcs_matrix = [[0 for _ in range(len(seq2) + 1)] for _ in range(len(seq1) + 1)]
 
-    # 动态规划填充这个矩阵
     for i in range(1, len(seq1) + 1):
         for j in range(1, len(seq2) + 1):
             if seq1[i - 1] == seq2[j - 1]:
@@ -344,7 +314,6 @@ def longest_common_subsequence(seq1, seq2):
             else:
                 lcs_matrix[i][j] = max(lcs_matrix[i - 1][j], lcs_matrix[i][j - 1])
 
-    # 矩阵的最后一个元素包含了LCS的长度
     return lcs_matrix[-1][-1]
 
 
@@ -357,7 +326,7 @@ def evaluate_agent(env, agent, road_graph, trace_graph, match_interval, correct_
     for batch in tqdm(range(env.num_of_batches)):
         data, done = env.step()
 
-        agent.reset_continuous_successes(data[0].size(0))  # 假设data[0]是traces，其第一维是批次大小
+        agent.reset_continuous_successes(data[0].size(0))
 
         traces, roads, candidates_id, trace_lens = data
         traces, roads, candidates_id = \
@@ -369,7 +338,7 @@ def evaluate_agent(env, agent, road_graph, trace_graph, match_interval, correct_
 
         trace_matched_id = []
         trace_ground_truth = []
-        # 初始化用于收集匹配结果和ground truth的列表
+
         for point_idx in range(match_interval - 1, traces.size(1) - match_interval, match_interval):
             sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1, :]
             sub_candidates = candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :]
@@ -408,13 +377,12 @@ def evaluate_agent(env, agent, road_graph, trace_graph, match_interval, correct_
             last_traces_encoding = traces_encoding
             last_matched_road_segments_encoding = matched_road_segments_encoding
 
-        # 对列表中的元素沿着match_interval维度进行拼接
-        trace_matched_id = torch.cat(trace_matched_id, dim=1).squeeze(-1)  # 拼接所有批次的匹配ID
-        trace_ground_truth = torch.cat(trace_ground_truth, dim=1).squeeze(-1)  # 拼接所有批次的真实路段ID
+        trace_matched_id = torch.cat(trace_matched_id, dim=1).squeeze(-1) 
+        trace_ground_truth = torch.cat(trace_ground_truth, dim=1).squeeze(-1)
 
         masks = torch.zeros_like(trace_matched_id, dtype=torch.bool)
         max_len = masks.size(1)
-        # 遍历每个批次的轨迹长度，并将小于等于轨迹长度的部分设置为True
+        
         for batch_idx, trace_len in enumerate(trace_lens):
             idx = min(trace_len, max_len)
             masks[batch_idx, :idx] = True

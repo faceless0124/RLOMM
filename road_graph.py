@@ -29,7 +29,6 @@ class RoadGraph():
                                                    self.num_roads)).to(device)
         self.road_x = torch.load(road_pt_path + 'x.pt').float().to(device)
 
-        # 读取预计算的连通性距离和真实距离
         connectivity_distances_file = root_path + 'connectivity_distances.pkl'
         with open(connectivity_distances_file, 'rb') as f:
             self.connectivity_distances = pickle.load(f)
@@ -41,14 +40,12 @@ class RoadGraph():
         self.real_distances = None
 
     def precompute_distances(self):
-        # 将邻接矩阵转换为 COO 格式并存储
         self.road_adj_coo = self.road_adj.to('cpu').coo()
         rows, cols, _ = self.road_adj_coo
         self.neighbors = {i: cols[rows == i].tolist() for i in range(self.num_roads)}
         distances = {}
 
         for road_id1 in tqdm(range(self.num_roads)):
-            # 初始化队列和访问记录
             queue = deque([road_id1])
             visited = set([road_id1])
             distance = {road_id1: 0}
@@ -62,12 +59,10 @@ class RoadGraph():
                         visited.add(neighbor_id)
                         distance[neighbor_id] = distance[current_id] + 1
 
-            # 将计算出的距离存储到 distances 字典中
             for road_id2 in range(self.num_roads):
                 if road_id1 != road_id2:
                     distances[(road_id1, road_id2)] = distance.get(road_id2, -1)
 
-        # 持久化存储距离数据
         with open(self.root_path + '/connectivity_distances.pkl', 'wb') as f:
             pickle.dump(distances, f)
 

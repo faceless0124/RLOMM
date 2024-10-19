@@ -7,12 +7,10 @@ class Environment:
         self.num_of_batches = num_of_batches
 
     def reset(self):
-        # 重置数据加载器的迭代器
         self.data_iter = iter(self.data_loader)
         self.current_data = next(self.data_iter, None)
 
     def step(self):
-        # 获取下一个数据批次
         if self.current_data is None:
             done = True
             next_data = None

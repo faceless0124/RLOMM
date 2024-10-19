@@ -37,13 +37,10 @@ class QNetwork(nn.Module):
 
     def forward(self, traces_encoding, matched_road_segments_encoding, traces, matched_road_segments_id, candidates,
                 road_graph, trace_graph):
-        # 编码路网特征
         road_emb = self.road_feat_fc(road_graph.road_x)
         road_emb = self.road_gin(road_emb, road_graph.road_adj)
-        # 提取对应路段编码
         segments_emb = road_emb[matched_road_segments_id.squeeze(-1)]
         candidates_emb = road_emb[candidates.squeeze(-1)]
-        # 编码轨迹特征
         # trace_graph.map_matrix [10551, 8533]
         # road_emb [8534, 32]
         pure_grid_feat = torch.mm(trace_graph.map_matrix, road_emb[:-1, :])
@@ -56,7 +53,6 @@ class QNetwork(nn.Module):
         trace_id = traces[:, :, 0].to(torch.long)
         timestamp = traces[:, :, 1].unsqueeze(-1)
 
-        # 提取对应路段编码
         full_grid_emb = self.fc(full_grid_emb)
         traces_emb = full_grid_emb[trace_id]
         traces_emb = torch.cat((traces_emb, timestamp), dim=-1)
@@ -64,18 +60,14 @@ class QNetwork(nn.Module):
         # timestamp = timestamp.permute(0, 2, 1)  # Change to (batch_size, 6, seq_len) to match Conv1d input
         # timestamp_emb = self.tcn(timestamp).permute(0, 2, 1)
 
-        # 应用RNN模型
         traces_output, traces_hidden = self.rnn_traces(traces_emb, traces_encoding)
         segments_output, segments_hidden = self.rnn_segments(segments_emb, matched_road_segments_encoding)
-        # 为轨迹和路段编码添加权重
         traces_encoded = self.trace_weight(traces_output)
         segments_encoded = self.segment_weight(segments_output)
-        # 应用注意力机制
         action_values = self.attention(traces_encoded, segments_encoded, candidates_emb)
         # concat_encoded = torch.cat((traces_encoded, segments_encoded), dim=-1).repeat(10,1,1)
         # candidates_emb = candidates_emb.permute(0, 2, 1, 3).reshape(concat_encoded.size(0), -1, concat_encoded.size(2))
         # action_values = self.output_linear(torch.cat((concat_encoded, candidates_emb), dim=-1)).reshape(traces_encoded.size(0), -1, 10)
-        # 返回动作值和最终隐藏状态
         return traces_hidden, segments_hidden, action_values, road_emb, full_grid_emb
 
 
@@ -86,7 +78,6 @@ class Attention(nn.Module):
         self.proj_candidates = nn.Linear(candidate_dim, d_model)
 
     def forward(self, trace_encoded, segments_encoded, candidates):
-        # 将轨迹和路段编码合并
         trace_segments_combined = torch.cat((trace_encoded, segments_encoded), dim=2) # (batch_size, seq_len, combined_dim)
         x_proj = torch.tanh(self.proj(trace_segments_combined))  # (batch_size, seq_len, d_model)
         candidates_proj = torch.tanh(self.proj_candidates(candidates))  # (batch_size, seq_len, candidates_num, d_model)

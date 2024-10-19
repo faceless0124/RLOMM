@@ -50,7 +50,6 @@ class MyDataset(Dataset):
 
         self.length = len(self.traces_ls)
 
-        # 归一化轨迹和候选点数据
         # self.traces_ls = [self.normalize_traces(trace) for trace in self.traces_ls]
         # self.traces_ls = [self.trace_gps2grid(trace) for trace in self.traces_ls]
         # self.candidates = [self.normalize_candidates(candidate) for candidate in self.candidates]
@@ -73,18 +72,15 @@ class MyDataset(Dataset):
         return count
 
     def normalize_traces(self, trace):
-        # 归一化经纬度数据
         return [[(lat - self.MIN_LAT) / (self.MAX_LAT - self.MIN_LAT),
                  (lng - self.MIN_LNG) / (self.MAX_LNG - self.MIN_LNG)]
                 for lat, lng in trace]
 
     def trace_gps2grid(self, trace):
-        # 经纬度转网格
         return [list(utils.gps2grid(lat, lng, MIN_LAT=self.MIN_LAT, MIN_LNG=self.MIN_LNG))
                 for lat, lng in trace]
 
     def normalize_candidates(self, candidates):
-        # 归一化候选点的经纬度数据
         normalized_candidates = []
         for candidate in candidates:
             normalized_candidate = []
@@ -97,83 +93,16 @@ class MyDataset(Dataset):
         return normalized_candidates
 
     def normalize_time_stamps(self, time_stamps):
-        # 初始化时间间隔列表，第一个时间点的间隔设置为0
         normalized_time_stamps = [0]
 
-        # 遍历时间戳列表，从第二个时间点开始
         for i in range(1, len(time_stamps)):
-            # 将当前时间点和前一个时间点转换为秒
             current_time = time.mktime(time.strptime(time_stamps[i], '%Y/%m/%d %H:%M:%S'))
             previous_time = time.mktime(time.strptime(time_stamps[i - 1], '%Y/%m/%d %H:%M:%S'))
 
-            # 计算当前时间点与前一个时间点的时间间隔，并添加到列表中
             interval = current_time - previous_time
             normalized_time_stamps.append(interval)
 
         return normalized_time_stamps
-
-    # def normalize_time_stamps(self, time_stamps):
-    #     # 初始化一个空列表来存储计算出的时间间隔
-    #     normalized_time_stamps = []
-    #
-    #     # 遍历时间戳列表，计算每个时间点与上一个时间点的时间间隔
-    #     for i, ts in enumerate(time_stamps):
-    #         if i == 0:
-    #             # 第一个时间点的时间间隔设为0
-    #             normalized_time_stamps.append(0)
-    #         else:
-    #             # 计算当前时间点与前一个时间点的时间间隔
-    #             current_time = time.mktime(time.strptime(ts, '%Y/%m/%d %H:%M:%S'))
-    #             previous_time = time.mktime(time.strptime(time_stamps[i - 1], '%Y/%m/%d %H:%M:%S'))
-    #             interval = current_time - previous_time
-    #             normalized_time_stamps.append(interval)
-    #
-    #     return normalized_time_stamps
-
-    # def normalize_time_stamps(self, time_stamps):
-    #     # 初始化一个空列表来存储计算出的时间特征
-    #     normalized_time_features = []
-    #
-    #     # 初始化前一个时间戳的时间（秒）
-    #     previous_seconds = None
-    #
-    #     # 定义一个函数来判断时间段
-    #     def get_time_of_day(hour):
-    #         if 5 <= hour < 12:
-    #             return 0  # 早晨
-    #         elif 12 <= hour < 17:
-    #             return 1  # 上午
-    #         elif 17 <= hour < 21:
-    #             return 2  # 下午
-    #         else:
-    #             return 3  # 晚上
-    #
-    #     # 遍历时间戳列表
-    #     for ts in time_stamps:
-    #         # 解析当前时间戳
-    #         current_time = time.strptime(ts, '%Y/%m/%d %H:%M:%S')
-    #         # 计算当前时间戳对应的总秒数
-    #         current_seconds = current_time.tm_hour * 3600 + current_time.tm_min * 60 + current_time.tm_sec
-    #         # 如果是第一个时间戳，则时间差设为0
-    #         if previous_seconds is None:
-    #             time_diff = 0
-    #         else:
-    #             # 计算与前一时间戳的时间差（秒）
-    #             time_diff = current_seconds - previous_seconds
-    #         # 更新前一个时间戳的时间
-    #         previous_seconds = current_seconds
-    #         # 提取一天中的时间（分钟数）
-    #         minutes_since_midnight = current_time.tm_hour * 60 + current_time.tm_min
-    #         # 提取一周中的天数
-    #         day_of_week = current_time.tm_wday
-    #         # 获取时间段
-    #         time_of_day = get_time_of_day(current_time.tm_hour)
-    #         # 将这些特征合并为一个特征向量
-    #         features = [minutes_since_midnight, day_of_week, time_diff, time_of_day]
-    #         # 将特征向量添加到结果列表中
-    #         normalized_time_features.append(features)
-    #
-    #     return np.array(normalized_time_features)
 
     def __getitem__(self, index):
         return self.traces_ls[index], self.time_stamps[index], self.tgt_roads_ls[index], self.candidates_id[index]
@@ -195,7 +124,7 @@ class MyDataset(Dataset):
 
             # time_stamp_sample = sample[1]
             # if len(time_stamp_sample) != max_tlen:
-            #     padding = np.array([[-1] * 4] * (max_tlen - len(time_stamp_sample)))  # 创建填充部分
+            #     padding = np.array([[-1] * 4] * (max_tlen - len(time_stamp_sample))) 
             #     time_stamp_sample = np.concatenate((time_stamp_sample, padding), axis=0)
             # time_stamp.append(time_stamp_sample)
 
@@ -207,9 +136,9 @@ class MyDataset(Dataset):
                 [candidates_id + [self.link_cnt] * (max_clen - len(candidates_id)) for candidates_id in sample[3]] + [
                     [self.link_cnt] * max_clen] * (max_tlen - len(sample[3])))
 
-        traces_array = np.array(traces)  # 将traces列表转换为NumPy数组
-        time_stamp_array = np.array(time_stamp)  # 将time_stamp列表转换为NumPy数组
-        traces_tensor = torch.FloatTensor(traces_array).unsqueeze(-1)  # 转换为张量并增加一个维度
-        time_stamp_tensor = torch.FloatTensor(time_stamp_array).unsqueeze(-1)   # 转换为张量
+        traces_array = np.array(traces)
+        time_stamp_array = np.array(time_stamp)
+        traces_tensor = torch.FloatTensor(traces_array).unsqueeze(-1)
+        time_stamp_tensor = torch.FloatTensor(time_stamp_array).unsqueeze(-1)
         traces = torch.cat((traces_tensor, time_stamp_tensor), dim=-1)
         return traces, torch.LongTensor(tgt_roads), torch.LongTensor(candidates_id), trace_lens
