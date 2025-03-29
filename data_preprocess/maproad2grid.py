@@ -7,7 +7,7 @@ from utils import create_dir
 downsample_rate = sys.argv[1]
 city = sys.argv[2]
 path = '../data/' + city + '/'
-data_path = path + 'data' + downsample_rate + '_dis/'
+data_path = path + 'data' + downsample_rate + '_0.1/'
 pkl_path = data_path + 'used_pkl/'
 create_dir(pkl_path)
 

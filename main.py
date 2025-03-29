@@ -123,7 +123,6 @@ def train_agent(train_env, valid_env, eval_env, agent, optimizer, road_graph, tr
             last_traces_encoding = None
             last_matched_road_segments_encoding = None
             for point_idx in range(match_interval - 1, traces.size(1) - match_interval, match_interval):
-                # sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1, :]
                 sub_traces = traces[:, point_idx + 1 - match_interval:point_idx + 1, :]
                 sub_candidates = candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :]
 
@@ -150,8 +149,6 @@ def train_agent(train_env, valid_env, eval_env, agent, optimizer, road_graph, tr
                 current_positive_samples, current_negative_samples = get_positive_negative_samples(
                     tgt_roads[:, point_idx + 1 - match_interval:point_idx + 1],
                     candidates_id[:, point_idx + 1 - match_interval:point_idx + 1, :])
-                # next_positive_samples, next_negative_samples = get_positive_negative_samples(
-                #     roads[:, point_idx + 1:point_idx + 1 + match_interval], candidates_id[:, point_idx + 1:point_idx + 1 + match_interval, :])
 
                 next_traces = traces[:, point_idx + 1:point_idx + 1 + match_interval, :]
                 next_candidates = candidates_id[:, point_idx + 1:point_idx + 1 + match_interval, :]
@@ -232,7 +229,6 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, trace_graph, gamma,
         reward = reward.to(device)
         mask = (reward != mask_reward).float()
 
-        # traces_encoding, matched_road_segments_encoding, trace, matched_road_segments_id, candidate = state
         traces_encoding, matched_road_segments_encoding, trace, matched_road_segments_id, candidate, positive_samples, negative_samples = state
         _, _, q_values, road_emb, full_grid_emb = dqn_agent.main_net(traces_encoding, matched_road_segments_encoding,
                                                                      trace, matched_road_segments_id, candidate,
@@ -266,8 +262,6 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, trace_graph, gamma,
 
         rl_loss = nn.SmoothL1Loss()(state_action_values * mask, expected_state_action_values * mask)
 
-        # postive_samples (batch_size, match_interval)
-        # negative_samples (batch_size, match_interval, 9)
         positive_samples = positive_samples.to(device)
         negative_samples = negative_samples.to(device)
         features = full_grid_emb[trace[:, :, 0].to(torch.long)]
@@ -276,10 +270,6 @@ def optimize_model(memory, dqn_agent, optimizer, road_graph, trace_graph, gamma,
 
         ctr_loss = contrastive_loss(features * mask.unsqueeze(-1), positive_features * mask.unsqueeze(-1),
                                     negative_features * mask.unsqueeze(-1).unsqueeze(-1))
-
-        # loss = rl_loss
-        # total_loss += rl_loss.item()
-
 
         loss = rl_loss + lambda_ctr * ctr_loss
         total_loss += rl_loss.item() + lambda_ctr * ctr_loss.item()
@@ -370,7 +360,6 @@ def evaluate_agent(env, agent, road_graph, trace_graph, match_interval, correct_
                                                     .gather(-1, roads[:,
                                                                 point_idx + 1 - match_interval + matched_id].unsqueeze(
                                                         1)).unsqueeze(-1)), dim=1)
-            # trace_ground_truth.append(roads[:, point_idx + 1 - match_interval:point_idx + 1])
             trace_ground_truth.append(cur_trace_ground_truth)
 
             matched_road_segments_id = cur_matched_road_segments_id
@@ -418,7 +407,9 @@ if __name__ == '__main__':
 
     data_path = osp.join('./data/' + city + '/data' + str(downsample_rate) + '_dis' + '/')
     road_graph = RoadGraph(root_path='./data/' + city, layer=4, gamma=10000, device=device)
+    print("loading road graph finished!")
     trace_graph = TraceGraph(data_path=data_path, device=device)
+    print("loading trace graph finished!")
 
     train_set = MyDataset(path=data_path, name="train", city=city)
     valid_set = MyDataset(path=data_path, name="val", city=city)
@@ -437,7 +428,7 @@ if __name__ == '__main__':
     agent = MMAgent(correct_reward, mask_reward, continuous_success_reward, connectivity_reward, detour_penalty)
     agent.to(device)
     optimizer = optim.Adam(agent.parameters(), lr=learning_rate)
-    # print(agent)
+
     num_of_parameters = 0
     for name, parameters in agent.named_parameters():
         num_of_parameters += np.prod(parameters.shape)

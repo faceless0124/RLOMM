@@ -133,8 +133,10 @@ class DataProcess():
         closest_candidates = []
         if city == 'beijing':
             link_cnt = 8533
-        else:
+        elif city == 'porto':
             link_cnt = 4254
+        else:
+            link_cnt = 6576
         for candidate_id in range(link_cnt):
             distance = road_distance_data.get((target_link_id, candidate_id))
             if distance is not None:
@@ -262,15 +264,6 @@ class DataProcess():
         with open(os.path.join(test_data_dir, "test.json"), 'w') as fp:
             json.dump(testset, fp)
 
-        # all_trace = [train_trace, test_trace]
-        # all_trace_name = ['train_trace.txt', 'test_trace.txt']
-        # for i in range(2):
-        #     tmptrace = all_trace[i]
-        #     path = output_dir + 'data_split/' + all_trace_name[i]
-        #     with open(path, 'w') as f:
-        #         for traces in tmptrace:
-        #             for trace in traces:
-        #                 f.write(trace)
 
         all_trace = [train_trace, val_trace, test_trace]
         all_trace_name = ['train_trace.txt', 'val_trace.txt', 'test_trace.txt']
@@ -285,5 +278,5 @@ class DataProcess():
 
 if __name__ == "__main__":
     path = '../data/' + city + '/'
-    data_path = path + 'data' + downsample_rate + '_dis' + '/'
+    data_path = path + 'data' + downsample_rate + '_0.1' + '/'
     DataProcess(traj_input_path=path + city + '_trace.txt', output_dir=data_path, sample_rate=float(downsample_rate))

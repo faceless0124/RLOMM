@@ -16,8 +16,6 @@ class MMAgent(nn.Module):
         self.main_net = QNetwork()
         self.target_net = QNetwork().eval()
         self.memory = Memory(100)
-        # self.short_term_history_size = 3
-        # self.short_term_history = None
 
     def select_action(self, last_traces_encoding, last_matched_road_segments_encoding, traces, matched_road_segments_id,
                       candidates, road_graph, trace_graph):
@@ -34,7 +32,6 @@ class MMAgent(nn.Module):
         self.continuous_successes = torch.zeros(batch_size, dtype=torch.int32)
 
     def init_short_history(self, batch_size):
-        # self.short_term_history = [[] for _ in range(batch_size)]
         self.short_term_history = [[-1, -1] for _ in range(batch_size)]
 
     def update_short_term_history(self, matched_road_segments_id):
@@ -56,10 +53,10 @@ class MMAgent(nn.Module):
                     self.continuous_successes[i] = 0
                 else:
                     selected_candidate_id = candidates_id[i, j, action[i, j]]
-                    # real_dis = road_graph.real_distance.get((last_road_id, selected_candidate_id.item()), -1)
+
                     self.short_term_history[i][1] = self.short_term_history[i][0]
                     self.short_term_history[i][0] = selected_candidate_id
-                    # if selected_candidate_id == tgt_roads[i, j].item():
+
                     if action[i, j] == tgt_roads[i, j].item():
                         reward = self.correct_reward
                         self.continuous_successes[i] += 1
@@ -78,7 +75,6 @@ class MMAgent(nn.Module):
                         if selected_candidate_id.item() != self.short_term_history[i][0] and \
                                 selected_candidate_id.item() == self.short_term_history[i][1]:
                             reward += -self.detour_penalty
-
 
                     last_road_id = selected_candidate_id.item()
 

@@ -18,8 +18,10 @@ class MyDataset(Dataset):
         self.buildingDataset(self.data_path)
         if city == 'beijing':
             self.link_cnt = 8533
-        else:
+        elif city == 'porto':
             self.link_cnt = 4254
+        else:
+            self.link_cnt = 6576
 
     def buildingDataset(self, data_path, subset_ratio=0.8):
         grid2traceid_dict = pickle.load(open(self.map_path, 'rb'))
@@ -49,10 +51,6 @@ class MyDataset(Dataset):
             self.candidates_id = [data[3::4][idx] for idx in subset_indices]
 
         self.length = len(self.traces_ls)
-
-        # self.traces_ls = [self.normalize_traces(trace) for trace in self.traces_ls]
-        # self.traces_ls = [self.trace_gps2grid(trace) for trace in self.traces_ls]
-        # self.candidates = [self.normalize_candidates(candidate) for candidate in self.candidates]
         self.time_stamps = [self.normalize_time_stamps(ts) for ts in self.time_stamps]
 
         self.cnt = self.count_point()
@@ -113,25 +111,16 @@ class MyDataset(Dataset):
 
     def padding(self, batch):
         trace_lens = [len(sample[0]) for sample in batch]
-        # road_lens = [len(sample[1]) for sample in batch]
         candidates_lens = [len(candidates) for sample in batch for candidates in sample[3]]
         max_tlen, max_clen = max(trace_lens), max(candidates_lens)
         traces, time_stamp, tgt_roads, candidates_id = [], [], [], []
         # 0: [PAD]
         for sample in batch:
-            # traces.append(sample[0] + [[0, 0]] * (max_tlen - len(sample[0])))
             traces.append(sample[0] + [0] * (max_tlen - len(sample[0])))
-
-            # time_stamp_sample = sample[1]
-            # if len(time_stamp_sample) != max_tlen:
-            #     padding = np.array([[-1] * 4] * (max_tlen - len(time_stamp_sample))) 
-            #     time_stamp_sample = np.concatenate((time_stamp_sample, padding), axis=0)
-            # time_stamp.append(time_stamp_sample)
 
             time_stamp.append(sample[1] + [-1] * (max_tlen - len(sample[1])))
             tgt_roads.append(sample[2] + [0] * (max_tlen - len(sample[2])))
-            # candidates.append([candidates + [0] * (max_clen - len(candidates)) for candidates in sample[3]] + [
-            #     [0] * max_clen] * (max_tlen - len(sample[3])))
+
             candidates_id.append(
                 [candidates_id + [self.link_cnt] * (max_clen - len(candidates_id)) for candidates_id in sample[3]] + [
                     [self.link_cnt] * max_clen] * (max_tlen - len(sample[3])))

@@ -3,7 +3,7 @@ import numpy as np
 import math
 import os
 
-GRID_SIZE = 50
+GRID_SIZE = 10
 LAT_PER_METER = 8.993203677616966e-06
 LNG_PER_METER = 1.1700193970443768e-05
 DEGREES_TO_RADIANS = math.pi / 180

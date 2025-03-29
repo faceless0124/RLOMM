@@ -60,8 +60,10 @@ def calculate_distances(road_dict: Dict[int, Tuple[float, float]], city: str) ->
     link_ids = list(road_dict.keys())
     if city == 'beijing':
         link_cnt = 8533
-    else:
+    elif city == 'porto':
         link_cnt = 4254
+    else:
+        link_cnt = 6576
 
     for i in tqdm(range(len(link_ids))):
         for j in range(len(link_ids)):
